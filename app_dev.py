@@ -365,7 +365,7 @@ def jsend_response(status: str, data: Optional[Any] = None, message: Optional[st
 # API：处理版本上传
 @app.post("/upload_version/")
 async def upload_version(
-    versionName: str,
+    versionName: str = Form(...),
     zipFile: UploadFile = File(...),
     showModel: bool = True,
     showScore: bool = False,
