@@ -367,10 +367,10 @@ def jsend_response(status: str, data: Optional[Any] = None, message: Optional[st
 async def upload_version(
     versionName: str = Form(...),
     zipFile: UploadFile = File(...),
-    showModel: bool = True,
-    showScore: bool = False,
-    threshold: float = 0.5,
-    usernameList: str = "",
+    showModel: bool = Form(...),
+    showScore: bool = Form(...),
+    threshold: float = Form(...),
+    usernameList: str = Form(...),
     db: Session = Depends(get_db)
 ):
     try:
