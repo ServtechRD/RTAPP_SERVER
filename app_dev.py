@@ -395,7 +395,7 @@ async def upload_version(
         action_data = {
             "showModel": showModel,
             "showScore": showScore,
-            "threshold": threshold
+            "modelThreshold": threshold
         }
         action_file_path = os.path.join(model_dir, "action.json")
         with open(action_file_path, "w") as action_file:
