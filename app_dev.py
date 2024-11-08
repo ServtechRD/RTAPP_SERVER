@@ -367,8 +367,8 @@ def jsend_response(status: str, data: Optional[Any] = None, message: Optional[st
 async def upload_version(
     versionName: str,
     zipFile: UploadFile = File(...),
-    showModel: bool = true,
-    showScore: bool = false,
+    showModel: bool = True,
+    showScore: bool = False,
     threshold: float = 0.5,
     usernameList: str = "",
     db: Session = Depends(get_db)
