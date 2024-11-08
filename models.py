@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime,Boolean
 from sqlalchemy.orm import relationship
 from database import Base
 from datetime import datetime
@@ -8,7 +8,10 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, index=True)
     password = Column(String)  # 哈希后的密码
-
+    name = Column(String(100))  # 用户真实姓名
+    mode = Column(String(20),default="TEST")   # 用户模式
+    enable = Column(Boolean, default=True)  # 启用状态
+    comment = Column(String(255))  # 备注
 
 class Client(Base):
     __tablename__ = "clients"
@@ -56,3 +59,27 @@ class PhotoUpload(Base):
     userName = Column(String(255), nullable=False, default="user")
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), onupdate=datetime.utcnow)
+
+
+class VersionManagement(Base):
+    __tablename__ = 'version_management'
+
+    id = Column(Integer, primary_key=True, index=True)
+    version_name = Column(String(100), index=True)
+    file_path = Column(String(1024))
+    upload_date = Column(DateTime, default=datetime.utcnow)
+    uploaded_by = Column(String(100))
+
+    def __repr__(self):
+        return f"<VersionManagement(version_name={self.version_name}, uploaded_by={self.uploaded_by})>"
+
+class VersionMapping(Base):
+    __tablename__ = 'version_mapping'
+
+    id = Column(Integer, primary_key=True, index=True)
+    version_name = Column(String(100), index=True)
+    user_name = Column(String(100))
+    update_date = Column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<VersionMapping(version_name={self.version_name}, user_name={self.user_name})>"

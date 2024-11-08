@@ -1,6 +1,8 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import Any,List, Optional
 from datetime import datetime
+
+
 
 
 class UserCreate(BaseModel):
@@ -62,3 +64,12 @@ class PhotoUploadResponse(BaseModel):
     userName: str
     created_at: datetime
     updated_at: Optional[datetime]
+
+
+class JSendResponse(BaseModel):
+    status: str
+    data: Optional[Any] = None
+    message: Optional[str] = None
+
+    class Config:
+        orm_mode = True
