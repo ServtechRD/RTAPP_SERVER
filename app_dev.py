@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from auth import create_access_token, authenticate_user, get_password_hash
 from database import SessionLocal, engine
-from models import Base, User, Client, Location, Task, Photo, PhotoUpload
+from models import Base, User, Client, Location, Task, Photo, PhotoUpload,VersionManagement,VersionMapping
 from schemas import Token, UserCreate, ClientBase, LocationBase, TaskBase, PhotoBase, PhotoUploadResponse, \
     ClientResponse, JSendResponse
 from auth import get_password_hash
@@ -420,7 +420,7 @@ async def upload_version(
 
         # 5. 记录 versionManagement 和 versionMapping 数据
         # 记录版本管理信息
-        version_management = models.VersionManagement(
+        version_management = VersionManagement(
             version_name=versionName,
             file_path=model_dir,
             uploaded_by="System",  # 可以替换为实际上传用户
@@ -430,7 +430,7 @@ async def upload_version(
 
         # 记录版本映射信息
         for username in usernames:
-            version_mapping = models.VersionMapping(
+            version_mapping = VersionMapping(
                 version_name=versionName,
                 user_name=username
             )
