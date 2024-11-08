@@ -13,7 +13,7 @@ from schemas import Token, UserCreate, ClientBase, LocationBase, TaskBase, Photo
     ClientResponse, JSendResponse
 from auth import get_password_hash
 from pydantic import BaseModel
-from typing import List,Optional
+from typing import Any,List,Optional
 import os
 import uuid
 import json
