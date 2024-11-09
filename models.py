@@ -9,6 +9,7 @@ class User(Base):
     username = Column(String(50), unique=True, index=True)
     password = Column(String)  # 哈希后的密码
     name = Column(String(100))  # 用户真实姓名
+    # SUPERADMIN (超級管理) | WEB(平台) | TEST (測試用) | MOBILE (手機用)
     mode = Column(String(20),default="TEST")   # 用户模式
     enable = Column(Boolean, default=True)  # 启用状态
     comment = Column(String(255))  # 备注

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Query
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Query,status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from datetime import datetime
@@ -14,6 +14,8 @@ from schemas import Token, UserCreate, ClientBase, LocationBase, TaskBase, Photo
 from auth import get_password_hash
 from pydantic import BaseModel
 from typing import Any, List, Optional
+from jose import JWTError, jwt
+
 import os
 import uuid
 import json
@@ -39,6 +41,10 @@ Base.metadata.create_all(bind=engine)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
+# 加密的密钥和算法
+SECRET_KEY = "RTAAPPSERVER"
+ALGORITHM = "HS256"
+
 
 # Dependency to get the session
 def get_db():
@@ -49,11 +55,30 @@ def get_db():
         db.close()
 
 
-# 用户注册的 Pydantic 模型
-class UserCreate(BaseModel):
-    username: str
-    password: str
 
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    try:
+        # 解码 JWT
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+
+    # 查询数据库，获取用户信息
+    user = db.query(User).filter(User.username == username).first()
+    if user is None:
+        raise credentials_exception
+
+    return user
 
 @app.post("/register")
 async def register(username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
@@ -84,6 +109,16 @@ async def login_for_access_token(db: Session = Depends(get_db), form_data: OAuth
     return {"access_token": access_token, "token_type": "bearer"}
 
 
+@app.get("/weblogin/")
+def check_user_role(current_user: User = Depends(get_current_user)):
+    # 检查用户的角色
+    if current_user.mode not in ["SUPER ADMIN", "WEB"]:
+        raise HTTPException(status_code=400, detail="未授權Web登入")
+
+    # 返回成功信息
+    return {"message": "User is authorized", "user_mode": current_user.mode}
+
+
 @app.post("/users/", response_model=UserCreate)
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
     hashed_password = get_password_hash(user.password)
@@ -93,6 +128,34 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
     db.refresh(db_user)
     return db_user
 
+
+
+@app.get("/users/all/")
+def get_all_users(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    user_mode = current_user.mode
+
+    if user_mode == "SUPER ADMIN":
+        users = db.query(User).all()
+    elif user_mode == "WEB":
+        users = db.query(User).filter(User.mode.in_(["WEB", "MOBILE"])).all()
+    else:
+        raise HTTPException(status_code=403, detail="Insufficient permissions to view all users")
+
+    return {"users": [{"id": user.id, "username": user.username, "mode": user.mode, "name": user.name} for user in users]}
+
+
+@app.get("/users/mobile/")
+def get_mobile_users(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    user_mode = current_user.mode
+
+    if user_mode == "SUPER ADMIN":
+        users = db.query(User).filter(User.mode.in_(["TEST", "MOBILE"])).all()
+    elif user_mode == "WEB":
+        users = db.query(User).filter(User.mode == "MOBILE").all()
+    else:
+        raise HTTPException(status_code=403, detail="Insufficient permissions to view mobile users")
+
+    return {"users": [{"id": user.id, "username": user.username, "mode": user.mode, "name": user.name} for user in users]}
 
 # CRUD for Clients
 @app.post("/clients/")
