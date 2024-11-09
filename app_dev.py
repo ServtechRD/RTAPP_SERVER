@@ -135,7 +135,7 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
 def get_all_users(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     user_mode = current_user.mode
 
-    if user_mode == "SUPER ADMIN":
+    if user_mode == "SUPERADMIN":
         users = db.query(User).all()
     elif user_mode == "WEB":
         users = db.query(User).filter(User.mode.in_(["WEB", "MOBILE"])).all()
@@ -149,7 +149,7 @@ def get_all_users(current_user: User = Depends(get_current_user), db: Session = 
 def get_mobile_users(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     user_mode = current_user.mode
 
-    if user_mode == "SUPER ADMIN":
+    if user_mode == "SUPERADMIN":
         users = db.query(User).filter(User.mode.in_(["TEST", "MOBILE"])).all()
     elif user_mode == "WEB":
         users = db.query(User).filter(User.mode == "MOBILE").all()
