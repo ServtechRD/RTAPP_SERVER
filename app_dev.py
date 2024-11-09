@@ -1,26 +1,24 @@
-from fastapi import FastAPI, Depends, HTTPException,UploadFile,File, Form
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from datetime import datetime
 from sqlalchemy import and_
-from sqlalchemy.orm import Session,joinedload
+from sqlalchemy.orm import Session, joinedload
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from auth import create_access_token, authenticate_user, get_password_hash
 from database import SessionLocal, engine
-from models import Base, User, Client, Location, Task, Photo, PhotoUpload,VersionManagement,VersionMapping
+from models import Base, User, Client, Location, Task, Photo, PhotoUpload, VersionManagement, VersionMapping
 from schemas import Token, UserCreate, ClientBase, LocationBase, TaskBase, PhotoBase, PhotoUploadResponse, \
-    ClientResponse, JSendResponse
+    ClientResponse, JSendResponse, ClientUpdate, LocationUpdate
 from auth import get_password_hash
 from pydantic import BaseModel
-from typing import Any,List,Optional
+from typing import Any, List, Optional
 import os
 import uuid
 import json
 import glob
 import zipfile
-
-
 
 app = FastAPI()
 
@@ -34,12 +32,13 @@ app.add_middleware(
 )
 
 # 设定静态文件目录 (即React build后的目录)
-#app.mount("/static", StaticFiles(directory="build/static"), name="static")
+# app.mount("/static", StaticFiles(directory="build/static"), name="static")
 
 
 Base.metadata.create_all(bind=engine)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
 
 # Dependency to get the session
 def get_db():
@@ -66,16 +65,13 @@ async def register(username: str = Form(...), password: str = Form(...), db: Ses
     # 对密码进行哈希处理
     hashed_password = get_password_hash(password)
     new_user = User(username=username, password=hashed_password)
-    
+
     # 保存新用户到数据库
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-    
+
     return {"message": "User created successfully", "username": new_user.username}
-
-
-
 
 
 @app.post("/token", response_model=Token)
@@ -83,9 +79,10 @@ async def login_for_access_token(db: Session = Depends(get_db), form_data: OAuth
     user = authenticate_user(db, form_data.username, form_data.password)
     if not user:
         raise HTTPException(status_code=400, detail="Incorrect username or password")
-    
+
     access_token = create_access_token(data={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer"}
+
 
 @app.post("/users/", response_model=UserCreate)
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
@@ -96,6 +93,7 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
     db.refresh(db_user)
     return db_user
 
+
 # CRUD for Clients
 @app.post("/clients/")
 def create_client(client: ClientBase, db: Session = Depends(get_db)):
@@ -105,9 +103,32 @@ def create_client(client: ClientBase, db: Session = Depends(get_db)):
     db.refresh(db_client)
     return db_client
 
+
 @app.get("/clients/")
 def get_clients(db: Session = Depends(get_db)):
     return db.query(Client).all()
+
+
+@app.put("/clients/{client_id}")
+def update_client(client_id: int, client: ClientUpdate, db: Session = Depends(get_db)):
+    # 查询客户是否存在
+    db_client = db.query(Client).filter(Client.id == client_id).first()
+    if not db_client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    # 更新客户信息
+    if client.name is not None:
+        db_client.name = client.name
+
+    db_client.enabled = client.enabled
+
+    # 可以根据需要添加更多字段的更新逻辑
+
+    # 提交更改
+    db.commit()
+    db.refresh(db_client)
+    return {"message": "Client updated successfully", "client": db_client}
+
 
 # CRUD for Locations
 @app.post("/locations/")
@@ -118,17 +139,47 @@ def create_location(location: LocationBase, db: Session = Depends(get_db)):
     db.refresh(db_location)
     return db_location
 
+
 @app.get("/locations/")
 def get_locations(db: Session = Depends(get_db)):
     return db.query(Location).all()
 
 
+@app.put("/locations/{location_id}")
+def update_location(location_id: int, location: LocationUpdate, db: Session = Depends(get_db)):
+    # 查找指定的 Location 记录
+    db_location = db.query(Location).filter(Location.id == location_id).first()
+    if not db_location:
+        raise HTTPException(status_code=404, detail="Location not found")
+
+    # 更新字段
+    if location.address is not None:
+        db_location.address = location.address
+    if location.client_id is not None:
+        db_location.client_id = location.client_id
+    if location.enabled is not None:
+        db_location.enabled = location.enabled
+
+    # 提交更改
+    db.commit()
+    db.refresh(db_location)
+    return {"message": "Location updated successfully", "location": db_location}
+
 
 @app.get("/clients_with_locations/", response_model=List[ClientResponse])
-async def get_clients_with_locations(db: Session = Depends(get_db)):
-    # 使用 joinedload 进行预加载，减少查询次数
-    clients = db.query(Client).options(joinedload(Client.locations)).all()
-    
+async def get_clients_with_locations(all: bool = Query(False), db: Session = Depends(get_db)):
+    # 如果 all 参数为 True，则不进行过滤
+    if all:
+        clients = db.query(Client).options(joinedload(Client.locations)).all()
+    else:
+        # 仅查询 enabled = True 的客户和位置
+        clients = (
+            db.query(Client)
+            .filter(Client.enabled == True)  # 过滤 enabled 为 True 的客户
+            .options(joinedload(Client.locations.and_(Location.enabled == True)))  # 过滤 enabled 为 True 的位置
+            .all()
+        )
+
     return clients
 
 
@@ -141,6 +192,7 @@ def create_task(task: TaskBase, db: Session = Depends(get_db)):
     db.refresh(db_task)
     return db_task
 
+
 @app.get("/tasks/")
 def get_tasks(db: Session = Depends(get_db)):
     return db.query(Task).all()
@@ -150,44 +202,45 @@ def get_tasks(db: Session = Depends(get_db)):
 async def get_version(user_name: str):
     # 指定 JSON 文件路径
     file_path = "../Models/last.json"
-    
+
     # 检查文件是否存在
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
-    
+
     # 读取 JSON 文件
     try:
         with open(file_path, "r") as file:
             data = json.load(file)
     except json.JSONDecodeError:
         raise HTTPException(status_code=500, detail="Error reading JSON file")
-    
+
     # 查找版本号
     if user_name in data:
         return {"version": data[user_name]}
     elif "all" in data:
         return {"version": data["all"]}
     else:
-        raise HTTPException(status_code=404, detail="Version not found")    
+        raise HTTPException(status_code=404, detail="Version not found")
+
+    # 1. 下载 train.tflite 文件
 
 
-
-# 1. 下载 train.tflite 文件
 @app.get("/models/file")
 async def download_tfile(version: str):
     # 搜索 train.tflite 文件路径
     search_path = f"../Models/{version}/**/train.tflite"
     files = glob.glob(search_path, recursive=True)
-    
+
     # 检查是否找到文件
     if not files:
         raise HTTPException(status_code=404, detail="train.tflite file not found")
-    
+
     # 获取找到的文件路径
     file_path = files[0]
-    
+
     # 返回文件作为下载
     return FileResponse(path=file_path, media_type="application/octet-stream", filename="train.tflite")
+
 
 # 2. 获取 action.json 内容
 @app.get("/models/action")
@@ -195,14 +248,14 @@ async def get_action(version: str):
     # 搜索 action.json 文件路径
     search_path = f"../Models/{version}/**/action.json"
     files = glob.glob(search_path, recursive=True)
-    
+
     # 检查是否找到文件
     if not files:
         raise HTTPException(status_code=404, detail="action.json file not found")
-    
+
     # 获取找到的文件路径
     file_path = files[0]
-    
+
     # 读取 JSON 文件内容并返回
     try:
         with open(file_path, "r") as file:
@@ -212,89 +265,81 @@ async def get_action(version: str):
         raise HTTPException(status_code=500, detail="Error reading JSON file")
 
 
-
-
-
-
-
-
 # Photo Upload
 # 创建保存路径的函数
-def create_upload_path(cid,lid):
+def create_upload_path(cid, lid):
     # 获取当前时间并格式化为 yyyy/MM/dd
     now = datetime.now()
     dir_path = now.strftime(f"../Upload/{cid}/{lid}/%Y/%m/%d")
-    print("create path = "+dir_path)
+    print("create path = " + dir_path)
     # 如果目录不存在，则创建
     os.makedirs(dir_path, exist_ok=True)
     return dir_path
 
+
 # 生成带有日期和 UUID 的文件名
-def generate_file_name(extension: str,unique_id):
+def generate_file_name(extension: str, unique_id):
     now = datetime.now()
     timestamp = now.strftime("%Y%m%d%H%M")  # 生成年月日時分
-    #unique_id = uuid.uuid4()  # 生成唯一的 UUID
+    # unique_id = uuid.uuid4()  # 生成唯一的 UUID
     return f"{timestamp}_{unique_id}.{extension}"
+
 
 # 上传文件处理
 @app.post("/photos/")
 async def upload_photo(
-    file: UploadFile = File(...), 
-    file_result: UploadFile = File(None),
-    customerId:str = Form(...),
-    locationId:str = Form(...),
-    detectLabels:str = Form(...),
-    taskId: str = Form(...),
-    saveTime:str = Form(...),
-    ownerName = Form(None),
-    userName = Form("user"),
-    db: Session = Depends(get_db)
+        file: UploadFile = File(...),
+        file_result: UploadFile = File(None),
+        customerId: str = Form(...),
+        locationId: str = Form(...),
+        detectLabels: str = Form(...),
+        taskId: str = Form(...),
+        saveTime: str = Form(...),
+        ownerName=Form(None),
+        userName=Form("user"),
+        db: Session = Depends(get_db)
 ):
     # 创建保存文件的目录
-    upload_dir = create_upload_path(customerId,locationId)
+    upload_dir = create_upload_path(customerId, locationId)
 
-    #task_id = 1
+    # task_id = 1
     unique_id = uuid.uuid4()  # 生成唯一的 UUID
 
     print(unique_id)
 
-    if(ownerName is None):
-      ownerName = userName
+    if (ownerName is None):
+        ownerName = userName
 
-
-    #return "success"
+    # return "success"
 
     # 保存图片文件
     file_path_extension = file.filename.split(".")[-1]  # 获取文件扩展名
-    file_name = generate_file_name(file_path_extension,unique_id)  # 生成新的文件名
+    file_name = generate_file_name(file_path_extension, unique_id)  # 生成新的文件名
     file_path_location = os.path.join(upload_dir, file_name)  # 完整的文件路径
     print(file_path_location)
     with open(file_path_location, "wb") as f:
-       print("start to write raw image")
-       f.write(await file.read())  # 保存文件
+        print("start to write raw image")
+        f.write(await file.read())  # 保存文件
 
+    if (file_result is not None):
+        file_result_path_location = file_path_location + "_result.png"
+        print(file_result_path_location)
 
-    if(file_result is not  None):
-       file_result_path_location = file_path_location+"_result.png"
-       print(file_result_path_location)
-     
-       with open(file_result_path_location, "wb") as f:
-          print("start to write result image")
-          f.write(await file_result.read())  # 保存文件
- 
-
+        with open(file_result_path_location, "wb") as f:
+            print("start to write result image")
+            f.write(await file_result.read())  # 保存文件
 
     # 保存任意文件 (result)
     result_extension = "txt"
-    result_file_name = generate_file_name(result_extension,unique_id)
+    result_file_name = generate_file_name(result_extension, unique_id)
     result_file_location = os.path.join(upload_dir, result_file_name)
     print(result_file_location)
     with open(result_file_location, "w") as f:
-        f.write(taskId+"\n")
-        f.write(detectLabels+"\n")
-        f.write(saveTime+"\n")
-        f.write(userName+"\n")
-        f.write(ownerName+"\n")
+        f.write(taskId + "\n")
+        f.write(detectLabels + "\n")
+        f.write(saveTime + "\n")
+        f.write(userName + "\n")
+        f.write(ownerName + "\n")
 
     # 将文件名保存到数据库
     new_photo = PhotoUpload(
@@ -323,37 +368,35 @@ async def upload_photo(
     }}
 
 
-
-
 # 综合查询 API
 @app.get("/photos/query/", response_model=List[PhotoUploadResponse])
 async def query_photos(
-    start_time: str,
-    end_time: str,
-    customerId: Optional[str] = None,
-    ownerName: Optional[str] = None,
-    db: Session = Depends(get_db)
+        start_time: str,
+        end_time: str,
+        customerId: Optional[str] = None,
+        ownerName: Optional[str] = None,
+        db: Session = Depends(get_db)
 ):
     # 构建基本的时间范围过滤条件
     filters = [
         PhotoUpload.saveTime >= start_time,
         PhotoUpload.saveTime <= end_time
     ]
-    
+
     # 如果指定了 customerId，则添加到过滤条件中
     if customerId:
         filters.append(PhotoUpload.customerId == customerId)
-    
+
     # 如果指定了 ownerName，则添加到过滤条件中
     if ownerName:
         filters.append(PhotoUpload.ownerName == ownerName)
-    
+
     # 应用所有过滤条件
     photos = db.query(PhotoUpload).filter(and_(*filters)).all()
-    
+
     if not photos:
         raise HTTPException(status_code=404, detail="No photos found for the specified criteria.")
-    
+
     return photos
 
 
@@ -365,13 +408,13 @@ def jsend_response(status: str, data: Optional[Any] = None, message: Optional[st
 # API：处理版本上传
 @app.post("/upload_version/")
 async def upload_version(
-    versionName: str = Form(...),
-    zipFile: UploadFile = File(...),
-    showModel: bool = Form(...),
-    showScore: bool = Form(...),
-    threshold: float = Form(...),
-    usernameList: str = Form(...),
-    db: Session = Depends(get_db)
+        versionName: str = Form(...),
+        zipFile: UploadFile = File(...),
+        showModel: bool = Form(...),
+        showScore: bool = Form(...),
+        threshold: float = Form(...),
+        usernameList: str = Form(...),
+        db: Session = Depends(get_db)
 ):
     try:
         # 1. 创建目录 ../Models/versionName
@@ -439,7 +482,8 @@ async def upload_version(
         db.commit()
 
         # 成功响应
-        return jsend_response(status="success", data={"version_name": versionName}, message="Version uploaded and processed successfully!")
+        return jsend_response(status="success", data={"version_name": versionName},
+                              message="Version uploaded and processed successfully!")
 
     except Exception as e:
         # 错误响应

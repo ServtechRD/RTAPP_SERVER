@@ -17,6 +17,7 @@ class Client(Base):
     __tablename__ = "clients"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100))
+    enabled = Column(Boolean, default=True)  # 新增字段，默认值为 True
   # 定义 relationship
     locations = relationship("Location", back_populates="client")
 
@@ -24,6 +25,7 @@ class Location(Base):
     __tablename__ = "locations"
     id = Column(Integer, primary_key=True, index=True)
     address = Column(String(255))
+    enabled = Column(Boolean, default=True)  # 新增字段，默认值为 True
     client_id = Column(Integer, ForeignKey("clients.id"))
  # 定义 relationship
     client = relationship("Client", back_populates="locations")
