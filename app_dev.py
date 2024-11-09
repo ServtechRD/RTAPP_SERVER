@@ -10,7 +10,7 @@ from auth import create_access_token, authenticate_user, get_password_hash
 from database import SessionLocal, engine
 from models import Base, User, Client, Location, Task, Photo, PhotoUpload, VersionManagement, VersionMapping
 from schemas import Token, UserCreate, ClientBase, LocationBase, TaskBase, PhotoBase, PhotoUploadResponse, \
-    ClientResponse, JSendResponse, ClientUpdate, LocationUpdate
+    ClientResponse, JSendResponse, ClientUpdate, LocationUpdate, VersionMappingResponse, VersionManagementResponse
 from auth import get_password_hash
 from pydantic import BaseModel
 from typing import Any, List, Optional
@@ -488,3 +488,16 @@ async def upload_version(
     except Exception as e:
         # 错误响应
         return jsend_response(status="error", message=str(e))
+
+
+@app.get("/versions/", response_model=List[VersionManagementResponse])
+def get_all_versions(db: Session = Depends(get_db)):
+    versions = db.query(VersionManagement).order_by(VersionManagement.upload_date.desc()).all()
+    return versions
+
+@app.get("/versions/mapping/{user_name}", response_model=List[VersionMappingResponse])
+def get_user_version_mappings(user_name: str, db: Session = Depends(get_db)):
+    mappings = db.query(VersionMapping).filter(VersionMapping.user_name == user_name).order_by(VersionMapping.update_date.desc()).all()
+    if not mappings:
+        raise HTTPException(status_code=404, detail="No version mappings found for this user")
+    return mappings

@@ -79,6 +79,28 @@ class PhotoUploadResponse(BaseModel):
     updated_at: Optional[datetime]
 
 
+# 版本管理记录的响应模型
+class VersionManagementResponse(BaseModel):
+    id: int
+    version_name: str
+    file_path: str
+    upload_date: datetime
+    uploaded_by: str
+
+    class Config:
+        orm_mode = True
+
+# 版本映射记录的响应模型
+class VersionMappingResponse(BaseModel):
+    id: int
+    version_name: str
+    user_name: str
+    update_date: datetime
+
+    class Config:
+        orm_mode = True
+
+
 class JSendResponse(BaseModel):
     status: str
     data: Optional[Any] = None
