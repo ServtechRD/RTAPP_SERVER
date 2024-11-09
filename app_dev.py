@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Que
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from datetime import datetime
-from sqlalchemy import and_
+from sqlalchemy import and_, distinct
 from sqlalchemy.orm import Session, joinedload
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -463,6 +463,17 @@ async def query_photos(
 
     return photos
 
+@app.get("/unique_owners/", response_model=List[str])
+def get_unique_owners(db: Session = Depends(get_db)):
+    # 查询不重复的 ownerName
+    unique_owners = db.query(distinct(PhotoUpload.ownerName)).filter(PhotoUpload.ownerName != None).all()
+    # 提取查询结果中的 ownerName 值
+    owner_names = [owner[0] for owner in unique_owners]
+
+    if not owner_names:
+        raise HTTPException(status_code=404, detail="No unique owner names found")
+
+    return owner_names
 
 # 创建 JSend 响应
 def jsend_response(status: str, data: Optional[Any] = None, message: Optional[str] = None) -> JSendResponse:

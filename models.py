@@ -64,6 +64,7 @@ class PhotoUpload(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=datetime.utcnow)
 
 
+
 class VersionManagement(Base):
     __tablename__ = 'version_management'
 
