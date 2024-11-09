@@ -6,7 +6,7 @@ from sqlalchemy import and_
 from sqlalchemy.orm import Session, joinedload
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from auth import create_access_token, authenticate_user, get_password_hash
+from auth import create_access_token, authenticate_user, get_password_hash, SECRET_KEY, ALGORITHM
 from database import SessionLocal, engine
 from models import Base, User, Client, Location, Task, Photo, PhotoUpload, VersionManagement, VersionMapping
 from schemas import Token, UserCreate, ClientBase, LocationBase, TaskBase, PhotoBase, PhotoUploadResponse, \
@@ -41,9 +41,7 @@ Base.metadata.create_all(bind=engine)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-# 加密的密钥和算法
-SECRET_KEY = "RTAAPPSERVER"
-ALGORITHM = "HS256"
+
 
 
 # Dependency to get the session
@@ -65,6 +63,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     )
 
     try:
+        print("JWT DECODE")
         # 解码 JWT
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
@@ -115,7 +114,7 @@ async def login_for_access_token(db: Session = Depends(get_db), form_data: OAuth
 def check_user_role(current_user: User = Depends(get_current_user)):
     # 检查用户的角色
     if current_user.mode not in ["SUPERADMIN", "WEB"]:
-        raise HTTPException(status_code=400, detail="未授權Web登入")
+        raise HTTPException(status_code=400, detail=f"未授權Web登入 mode{current_user.mode}")
 
     # 返回成功信息
     return {"message": "User is authorized", "user_mode": current_user.mode}
