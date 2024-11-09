@@ -78,6 +78,8 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user is None:
         raise credentials_exception
 
+    print(f"user is {user.username} mode = {user.mode}")
+
     return user
 
 @app.post("/register")
@@ -112,7 +114,7 @@ async def login_for_access_token(db: Session = Depends(get_db), form_data: OAuth
 @app.get("/weblogin/")
 def check_user_role(current_user: User = Depends(get_current_user)):
     # 检查用户的角色
-    if current_user.mode not in ["SUPER ADMIN", "WEB"]:
+    if current_user.mode not in ["SUPERADMIN", "WEB"]:
         raise HTTPException(status_code=400, detail="未授權Web登入")
 
     # 返回成功信息
