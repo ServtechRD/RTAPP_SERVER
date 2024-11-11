@@ -576,3 +576,18 @@ def get_user_version_mappings(user_name: str, db: Session = Depends(get_db)):
     if not mappings:
         raise HTTPException(status_code=404, detail="No version mappings found for this user")
     return mappings
+
+
+@app.get("/photo/")
+def get_photo(file_path: str, db: Session = Depends(get_db)):
+    # 从数据库中查询照片记录，以确保文件路径有效
+    photo = db.query(PhotoUpload).filter(PhotoUpload.file_path == file_path).first()
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+    # 检查文件是否存在
+    if not os.path.exists(photo.file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # 返回文件内容，供前端展示或下载
+    return FileResponse(path=photo.file_path, media_type="image/jpeg", filename=os.path.basename(photo.file_path))
