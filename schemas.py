@@ -8,6 +8,16 @@ from datetime import datetime
 class UserCreate(BaseModel):
     username: str
     password: str
+    name: str
+    mode:str
+    comment: Optional[str] = None
+
+
+class UserUpdate(BaseModel):
+    name:Optional[str]=None
+    password: Optional[str] = None
+    enable: Optional[bool] = None
+    comment: Optional[str] = None
 
 class Token(BaseModel):
     access_token: str

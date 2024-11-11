@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Query,status
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Query, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from datetime import datetime
@@ -10,7 +10,8 @@ from auth import create_access_token, authenticate_user, get_password_hash, SECR
 from database import SessionLocal, engine
 from models import Base, User, Client, Location, Task, Photo, PhotoUpload, VersionManagement, VersionMapping
 from schemas import Token, UserCreate, ClientBase, LocationBase, TaskBase, PhotoBase, PhotoUploadResponse, \
-    ClientResponse, JSendResponse, ClientUpdate, LocationUpdate, VersionMappingResponse, VersionManagementResponse
+    ClientResponse, JSendResponse, ClientUpdate, LocationUpdate, VersionMappingResponse, VersionManagementResponse, \
+    UserUpdate
 from auth import get_password_hash
 from pydantic import BaseModel
 from typing import Any, List, Optional
@@ -42,8 +43,6 @@ Base.metadata.create_all(bind=engine)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 
-
-
 # Dependency to get the session
 def get_db():
     db = SessionLocal()
@@ -51,8 +50,6 @@ def get_db():
         yield db
     finally:
         db.close()
-
-
 
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
@@ -80,6 +77,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     print(f"user is {user.username} mode = {user.mode}")
 
     return user
+
 
 @app.post("/register")
 async def register(username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
@@ -120,15 +118,55 @@ def check_user_role(current_user: User = Depends(get_current_user)):
     return {"message": "User is authorized", "user_mode": current_user.mode}
 
 
+@app.get("/users_mode/", response_model=List[str])
+def get_available_user_types(current_user: User = Depends(get_current_user)):
+    # 检查用户的角色，并返回相应的可用用户类型
+    if current_user.mode == "SUPER ADMIN":
+        return ["WEB", "TEST", "MOBILE"]
+    elif current_user.mode == "WEB":
+        return ["WEB"]
+    else:
+        raise HTTPException(status_code=403, detail="Unauthorized to retrieve user types")
+
+
 @app.post("/users/", response_model=UserCreate)
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
     hashed_password = get_password_hash(user.password)
-    db_user = User(username=user.username, password=hashed_password)
+    db_user = User(username=user.username, password=hashed_password, mode=user.mode, name=user.name, enable=True)
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
     return db_user
 
+
+@app.put("/users/{user_id}")
+def update_user(user_id: int, user_update: UserUpdate, current_user: User = Depends(get_current_user),
+                db: Session = Depends(get_db)):
+    # 仅允许 SUPER ADMIN 和 WEB 用户进行此操作
+    if current_user.mode not in ["SUPER ADMIN", "WEB"]:
+        raise HTTPException(status_code=403, detail="Unauthorized to update user")
+
+    # 查询指定的用户
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # 更新密码（如果提供了新的密码）
+    if user_update.password:
+        user.password = get_password_hash(user_update.password)
+
+    if user_update.name:
+        user.name = user_update.name
+
+    # 更新启用状态（如果提供了新的启用状态）
+    if user_update.enable is not None:
+        user.enable = user_update.enable
+
+    # 提交更改
+    db.commit()
+    db.refresh(user)
+    return {"message": "User updated successfully",
+            "user": {"id": user.id, "username": user.username, "enable": user.enable}}
 
 
 @app.get("/users/all/")
@@ -142,7 +180,8 @@ def get_all_users(current_user: User = Depends(get_current_user), db: Session = 
     else:
         raise HTTPException(status_code=403, detail="Insufficient permissions to view all users")
 
-    return {"users": [{"id": user.id, "username": user.username, "mode": user.mode, "name": user.name} for user in users]}
+    return {
+        "users": [{"id": user.id, "username": user.username, "mode": user.mode, "name": user.name} for user in users]}
 
 
 @app.get("/users/mobile/")
@@ -156,7 +195,9 @@ def get_mobile_users(current_user: User = Depends(get_current_user), db: Session
     else:
         raise HTTPException(status_code=403, detail="Insufficient permissions to view mobile users")
 
-    return {"users": [{"id": user.id, "username": user.username, "mode": user.mode, "name": user.name} for user in users]}
+    return {
+        "users": [{"id": user.id, "username": user.username, "mode": user.mode, "name": user.name} for user in users]}
+
 
 # CRUD for Clients
 @app.post("/clients/")
@@ -463,6 +504,7 @@ async def query_photos(
 
     return photos
 
+
 @app.get("/unique_owners/", response_model=List[str])
 def get_unique_owners(db: Session = Depends(get_db)):
     # 查询不重复的 ownerName
@@ -474,6 +516,7 @@ def get_unique_owners(db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="No unique owner names found")
 
     return owner_names
+
 
 # 创建 JSend 响应
 def jsend_response(status: str, data: Optional[Any] = None, message: Optional[str] = None) -> JSendResponse:
@@ -570,9 +613,11 @@ def get_all_versions(db: Session = Depends(get_db)):
     versions = db.query(VersionManagement).order_by(VersionManagement.upload_date.desc()).all()
     return versions
 
+
 @app.get("/versions/mapping/{user_name}", response_model=List[VersionMappingResponse])
 def get_user_version_mappings(user_name: str, db: Session = Depends(get_db)):
-    mappings = db.query(VersionMapping).filter(VersionMapping.user_name == user_name).order_by(VersionMapping.update_date.desc()).all()
+    mappings = db.query(VersionMapping).filter(VersionMapping.user_name == user_name).order_by(
+        VersionMapping.update_date.desc()).all()
     if not mappings:
         raise HTTPException(status_code=404, detail="No version mappings found for this user")
     return mappings
@@ -594,7 +639,7 @@ def get_photo(file_path: str, db: Session = Depends(get_db)):
 
 
 @app.get("/photos/download/{photo_id}")
-def download_photo(photo_id: int,result: bool = Query(False), db: Session = Depends(get_db)):
+def download_photo(photo_id: int, result: bool = Query(False), db: Session = Depends(get_db)):
     # 根据 photo_id 查询数据库，获取文件路径
     photo = db.query(PhotoUpload).filter(PhotoUpload.id == photo_id).first()
     if not photo:
@@ -609,6 +654,7 @@ def download_photo(photo_id: int,result: bool = Query(False), db: Session = Depe
 
     # 返回文件以供下载
     return FileResponse(path=file_path, media_type="image/jpeg", filename=os.path.basename(file_path))
+
 
 @app.get("/photos/show/{photo_id}")
 def download_photo(photo_id: int, result: bool = Query(False), db: Session = Depends(get_db)):
