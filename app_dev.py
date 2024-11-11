@@ -143,7 +143,7 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
 def update_user(user_id: int, user_update: UserUpdate, current_user: User = Depends(get_current_user),
                 db: Session = Depends(get_db)):
     # 仅允许 SUPER ADMIN 和 WEB 用户进行此操作
-    if current_user.mode not in ["SUPER ADMIN", "WEB"]:
+    if current_user.mode not in ["SUPERADMIN", "WEB"]:
         raise HTTPException(status_code=403, detail="Unauthorized to update user")
 
     # 查询指定的用户
