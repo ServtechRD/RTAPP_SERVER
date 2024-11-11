@@ -121,7 +121,7 @@ def check_user_role(current_user: User = Depends(get_current_user)):
 @app.get("/users_mode/", response_model=List[str])
 def get_available_user_types(current_user: User = Depends(get_current_user)):
     # 检查用户的角色，并返回相应的可用用户类型
-    if current_user.mode == "SUPER ADMIN":
+    if current_user.mode == "SUPERADMIN":
         return ["WEB", "TEST", "MOBILE"]
     elif current_user.mode == "WEB":
         return ["WEB"]
