@@ -111,7 +111,7 @@ async def login_for_access_token(db: Session = Depends(get_db), form_data: OAuth
 @app.get("/weblogin/")
 def check_user_role(current_user: User = Depends(get_current_user)):
     # 检查用户的角色
-    if current_user.mode not in ["SUPERADMIN", "WEB"]:
+    if current_user.mode not in ["SUPERADMIN", "WEB","VIEW"]:
         raise HTTPException(status_code=400, detail=f"未授權Web登入 mode{current_user.mode}")
 
     # 返回成功信息
@@ -124,7 +124,7 @@ def get_available_user_types(current_user: User = Depends(get_current_user)):
     if current_user.mode == "SUPERADMIN":
         return ["WEB", "TEST", "MOBILE"]
     elif current_user.mode == "WEB":
-        return ["WEB"]
+        return ["WEB","VIEW"]
     else:
         raise HTTPException(status_code=403, detail="Unauthorized to retrieve user types")
 
@@ -176,7 +176,7 @@ def get_all_users(current_user: User = Depends(get_current_user), db: Session = 
     if user_mode == "SUPERADMIN":
         users = db.query(User).all()
     elif user_mode == "WEB":
-        users = db.query(User).filter(User.mode.in_(["WEB", "MOBILE"])).all()
+        users = db.query(User).filter(User.mode.in_(["WEB","VIEW","MOBILE"])).all()
     else:
         raise HTTPException(status_code=403, detail="Insufficient permissions to view all users")
 
