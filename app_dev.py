@@ -591,3 +591,41 @@ def get_photo(file_path: str, db: Session = Depends(get_db)):
 
     # 返回文件内容，供前端展示或下载
     return FileResponse(path=photo.file_path, media_type="image/jpeg", filename=os.path.basename(photo.file_path))
+
+
+@app.get("/photos/download/{photo_id}")
+def download_photo(photo_id: int,result: bool = Query(False), db: Session = Depends(get_db)):
+    # 根据 photo_id 查询数据库，获取文件路径
+    photo = db.query(PhotoUpload).filter(PhotoUpload.id == photo_id).first()
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+    # 根据 result 参数决定返回的文件路径
+    file_path = photo.file_result_path if result else photo.file_path
+
+    # 检查文件是否存在
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # 返回文件以供下载
+    return FileResponse(path=file_path, media_type="image/jpeg", filename=os.path.basename(file_path))
+
+@app.get("/photos/show/{photo_id}")
+def download_photo(photo_id: int, result: bool = Query(False), db: Session = Depends(get_db)):
+    # 根据 photo_id 查询数据库，获取文件路径
+    photo = db.query(PhotoUpload).filter(PhotoUpload.id == photo_id).first()
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+    # 根据 result 参数决定返回的文件路径
+    file_path = photo.file_result_path if result else photo.file_path
+
+    # 检查文件是否存在
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # 自动判断媒体类型
+    media_type = "image/jpeg" if file_path.endswith(".jpg") or file_path.endswith(".jpeg") else "image/png"
+
+    # 返回文件以供展示，不设置 filename 以避免下载提示
+    return FileResponse(path=file_path, media_type=media_type)
