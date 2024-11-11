@@ -181,7 +181,7 @@ def get_all_users(current_user: User = Depends(get_current_user), db: Session = 
         raise HTTPException(status_code=403, detail="Insufficient permissions to view all users")
 
     return {
-        "users": [{"id": user.id, "username": user.username, "mode": user.mode, "name": user.name} for user in users]}
+        "users": [{"id": user.id, "username": user.username, "mode": user.mode, "name": user.name ,"enabled":user.enable} for user in users]}
 
 
 @app.get("/users/mobile/")
