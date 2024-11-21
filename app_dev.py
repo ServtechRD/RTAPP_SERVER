@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Query, status,Request
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Query, status, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -22,20 +22,24 @@ from jose import JWTError, jwt
 import logging
 from logging.handlers import TimedRotatingFileHandler
 
-
 import os
 import uuid
 import json
 import glob
 import zipfile
 
-
 # 创建日志目录
 log_dir = "../logs"
 os.makedirs(log_dir, exist_ok=True)
 
+# 获取当前日期
+current_date = datetime.now()
+
+# 格式化为 yyyyMMdd
+formatted_date = current_date.strftime("%Y%m%d")
+
 # 设置日志文件路径
-log_file_path = os.path.join(log_dir, "%Y%m%d.txt")
+log_file_path = os.path.join(log_dir, f"{formatted_date}.txt")
 
 # 配置日志
 logging.basicConfig(
@@ -55,7 +59,6 @@ logging.basicConfig(
 
 # 获取 logger
 logger = logging.getLogger(__name__)
-
 
 app = FastAPI()
 
@@ -121,6 +124,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
         content={"detail": exc.detail},
     )
 
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     logger.error(f"Validation Error: {exc.errors()}")
@@ -128,6 +132,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         status_code=422,
         content={"detail": exc.errors()},
     )
+
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -159,8 +164,8 @@ async def log_requests(request: Request, call_next):
     response = await call_next(request)
 
     # 记录响应信息
-    #response_body = b""
-    #async for chunk in response.body_iterator:
+    # response_body = b""
+    # async for chunk in response.body_iterator:
     #    response_body += chunk
     logger.info(
         f"Response: status_code={response.status_code}"
@@ -168,6 +173,7 @@ async def log_requests(request: Request, call_next):
 
     # 返回响应
     return response
+
 
 @app.post("/register")
 async def register(username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
@@ -201,7 +207,7 @@ async def login_for_access_token(db: Session = Depends(get_db), form_data: OAuth
 @app.get("/weblogin/")
 def check_user_role(current_user: User = Depends(get_current_user)):
     # 检查用户的角色
-    if current_user.mode not in ["SUPERADMIN", "WEB","VIEW"]:
+    if current_user.mode not in ["SUPERADMIN", "WEB", "VIEW"]:
         raise HTTPException(status_code=400, detail=f"未授權Web登入 mode{current_user.mode}")
 
     # 返回成功信息
@@ -214,7 +220,7 @@ def get_available_user_types(current_user: User = Depends(get_current_user)):
     if current_user.mode == "SUPERADMIN":
         return ["WEB", "TEST", "MOBILE"]
     elif current_user.mode == "WEB":
-        return ["WEB","VIEW"]
+        return ["WEB", "VIEW"]
     else:
         raise HTTPException(status_code=403, detail="Unauthorized to retrieve user types")
 
@@ -266,12 +272,14 @@ def get_all_users(current_user: User = Depends(get_current_user), db: Session = 
     if user_mode == "SUPERADMIN":
         users = db.query(User).all()
     elif user_mode == "WEB":
-        users = db.query(User).filter(User.mode.in_(["WEB","VIEW","MOBILE"])).all()
+        users = db.query(User).filter(User.mode.in_(["WEB", "VIEW", "MOBILE"])).all()
     else:
         raise HTTPException(status_code=403, detail="Insufficient permissions to view all users")
 
     return {
-        "users": [{"id": user.id, "username": user.username, "mode": user.mode, "name": user.name ,"enable":user.enable} for user in users]}
+        "users": [
+            {"id": user.id, "username": user.username, "mode": user.mode, "name": user.name, "enable": user.enable} for
+            user in users]}
 
 
 @app.get("/users/mobile/")
