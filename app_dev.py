@@ -39,7 +39,7 @@ current_date = datetime.now()
 formatted_date = current_date.strftime("%Y%m%d")
 
 # 设置日志文件路径
-log_file_path = os.path.join(log_dir, f"{formatted_date}.txt")
+log_file_path = os.path.join(log_dir, f"dev_{formatted_date}.txt")
 
 # 配置日志
 logging.basicConfig(
