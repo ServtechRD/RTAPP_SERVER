@@ -159,11 +159,11 @@ async def log_requests(request: Request, call_next):
     response = await call_next(request)
 
     # 记录响应信息
-    response_body = b""
-    async for chunk in response.body_iterator:
-        response_body += chunk
+    #response_body = b""
+    #async for chunk in response.body_iterator:
+    #    response_body += chunk
     logger.info(
-        f"Response: status_code={response.status_code}, body={response_body.decode('utf-8', 'ignore')}"
+        f"Response: status_code={response.status_code}}"
     )
 
     # 返回响应
