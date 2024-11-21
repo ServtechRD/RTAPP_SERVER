@@ -163,7 +163,7 @@ async def log_requests(request: Request, call_next):
     #async for chunk in response.body_iterator:
     #    response_body += chunk
     logger.info(
-        f"Response: status_code={response.status_code}}"
+        f"Response: status_code={response.status_code}"
     )
 
     # 返回响应
