@@ -1,5 +1,7 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Query, status
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Query, status,Request
 from fastapi.staticfiles import StaticFiles
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from datetime import datetime
 from sqlalchemy import and_, distinct
@@ -17,11 +19,43 @@ from pydantic import BaseModel
 from typing import Any, List, Optional
 from jose import JWTError, jwt
 
+import logging
+from logging.handlers import TimedRotatingFileHandler
+
+
 import os
 import uuid
 import json
 import glob
 import zipfile
+
+
+# 创建日志目录
+log_dir = "../logs"
+os.makedirs(log_dir, exist_ok=True)
+
+# 设置日志文件路径
+log_file_path = os.path.join(log_dir, "%Y%m%d.txt")
+
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        TimedRotatingFileHandler(
+            log_file_path,
+            when="midnight",  # 每天生成一个新日志文件
+            interval=1,
+            backupCount=30,  # 保留最近30天的日志
+            encoding="utf-8",
+            utc=True
+        )
+    ],
+)
+
+# 获取 logger
+logger = logging.getLogger(__name__)
+
 
 app = FastAPI()
 
@@ -78,6 +112,54 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
     return user
 
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    logger.error(f"HTTP Exception: {exc.detail}")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.error(f"Validation Error: {exc.errors()}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()},
+    )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unexpected Exception: {str(exc)}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    # 记录请求信息
+    request_time = datetime.utcnow()
+    request_body = await request.body()
+    logger.info(
+        f"Request: method={request.method}, url={request.url}, body={request_body.decode('utf-8', 'ignore')}"
+    )
+
+    # 调用下一个处理程序
+    response = await call_next(request)
+
+    # 记录响应信息
+    response_body = b""
+    async for chunk in response.body_iterator:
+        response_body += chunk
+    logger.info(
+        f"Response: status_code={response.status_code}, body={response_body.decode('utf-8', 'ignore')}"
+    )
+
+    # 返回响应
+    return response
 
 @app.post("/register")
 async def register(username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
