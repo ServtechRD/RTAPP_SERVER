@@ -142,6 +142,14 @@ async def global_exception_handler(request: Request, exc: Exception):
 async def log_requests(request: Request, call_next):
     # 记录请求信息
     request_time = datetime.utcnow()
+
+    # 定义需要跳过日志记录的路径
+    excluded_paths = ["/token", "/weblogin/", "/user_mode/"]
+
+    # 如果路径在排除列表中，则跳过日志记录
+    if request.url.path in excluded_paths:
+        return await call_next(request)
+
     request_body = await request.body()
     logger.info(
         f"Request: method={request.method}, url={request.url}, body={request_body.decode('utf-8', 'ignore')}"
