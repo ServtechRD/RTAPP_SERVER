@@ -39,7 +39,7 @@ current_date = datetime.now()
 formatted_date = current_date.strftime("%Y%m%d")
 
 # 设置日志文件路径
-log_file_path = os.path.join(log_dir, f"app_{formatted_date}.txt")
+log_file_path = os.path.join(log_dir, f"dev_{formatted_date}.txt")
 
 # 配置日志
 logging.basicConfig(
@@ -470,10 +470,14 @@ async def get_action(version: str):
 
 # Photo Upload
 # 创建保存路径的函数
-def create_upload_path(cid, lid):
+def create_upload_path(cid, lid, sn):
     # 获取当前时间并格式化为 yyyy/MM/dd
     now = datetime.now()
-    dir_path = now.strftime(f"../Upload/{cid}/{lid}/%Y/%m/%d")
+    dir_path = "../Upload/NA"
+    if (len(sn) > 0):
+        dir_path = now.strftime(f"../Upload/{sn}/%Y/%m/%d")
+    else:
+        dir_path = now.strftime(f"../Upload/{cid}/{lid}/%Y/%m/%d")
     print("create path = " + dir_path)
     # 如果目录不存在，则创建
     os.makedirs(dir_path, exist_ok=True)
@@ -500,10 +504,11 @@ async def upload_photo(
         saveTime: str = Form(...),
         ownerName=Form(None),
         userName=Form("user"),
+        serialNumber=Form(""),
         db: Session = Depends(get_db)
 ):
     # 创建保存文件的目录
-    upload_dir = create_upload_path(customerId, locationId)
+    upload_dir = create_upload_path(customerId, locationId, serialNumber)
 
     # task_id = 1
     unique_id = uuid.uuid4()  # 生成唯一的 UUID
@@ -544,10 +549,16 @@ async def upload_photo(
         f.write(userName + "\n")
         f.write(ownerName + "\n")
 
+    # 如果未輸入, 表示是舊版本
+    sn = serialNumber
+    if len(sn) < 0:
+        sn = "0000000"
+
     # 将文件名保存到数据库
     new_photo = PhotoUpload(
         file_path=file_path_location,  # 只保存文件名
         file_result_path=file_result_path_location,
+        serialNumber=sn,
         customerId=int(customerId),
         locationId=int(locationId),
         detectLabels=detectLabels,
@@ -576,6 +587,7 @@ async def upload_photo(
 async def query_photos(
         start_time: str,
         end_time: str,
+        serialNumber: Optional[str] = None,
         customerId: Optional[str] = None,
         ownerName: Optional[str] = None,
         db: Session = Depends(get_db)
@@ -593,6 +605,9 @@ async def query_photos(
     # 如果指定了 ownerName，则添加到过滤条件中
     if ownerName:
         filters.append(PhotoUpload.ownerName == ownerName)
+
+    if serialNumber:
+        filters.append(PhotoUpload.serialNumber == serialNumber)
 
     # 应用所有过滤条件
     photos = db.query(PhotoUpload).filter(and_(*filters)).all()
@@ -614,6 +629,20 @@ def get_unique_owners(db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="No unique owner names found")
 
     return owner_names
+
+
+@app.get("/unique_serials/", response_model=List[str])
+def get_unique_serials(db: Session = Depends(get_db)):
+    # 查询不重复的 serialnumber
+    uniquire_record = db.query(distinct(PhotoUpload.serialNumber)).filter(PhotoUpload.serialNumber != None).all()
+    # 提取查询结果中的 serialnumber 值
+    serial_numbers = [sn[0] for sn in uniquire_record]
+
+    if not serial_numbers:
+        raise HTTPException(status_code=404, detail="No unique serial number found")
+
+    return serial_numbers
+
 
 
 # 创建 JSend 响应

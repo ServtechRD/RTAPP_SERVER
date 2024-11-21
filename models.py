@@ -1,7 +1,8 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime,Boolean
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean
 from sqlalchemy.orm import relationship
 from database import Base
 from datetime import datetime
+
 
 class User(Base):
     __tablename__ = "users"
@@ -10,17 +11,19 @@ class User(Base):
     password = Column(String)  # 哈希后的密码
     name = Column(String(100))  # 用户真实姓名
     # SUPERADMIN (超級管理) | WEB(平台) | TEST (測試用) | MOBILE (手機用)
-    mode = Column(String(20),default="TEST")   # 用户模式
+    mode = Column(String(20), default="TEST")  # 用户模式
     enable = Column(Boolean, default=True)  # 启用状态
     comment = Column(String(255))  # 备注
+
 
 class Client(Base):
     __tablename__ = "clients"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100))
     enabled = Column(Boolean, default=True)  # 新增字段，默认值为 True
-  # 定义 relationship
+    # 定义 relationship
     locations = relationship("Location", back_populates="client")
+
 
 class Location(Base):
     __tablename__ = "locations"
@@ -28,7 +31,7 @@ class Location(Base):
     address = Column(String(255))
     enabled = Column(Boolean, default=True)  # 新增字段，默认值为 True
     client_id = Column(Integer, ForeignKey("clients.id"))
- # 定义 relationship
+    # 定义 relationship
     client = relationship("Client", back_populates="locations")
 
 
@@ -38,6 +41,7 @@ class Task(Base):
     name = Column(String(100))
     identifier1 = Column(String(100))
     identifier2 = Column(String(100))
+
 
 class Photo(Base):
     __tablename__ = "photos"
@@ -60,9 +64,9 @@ class PhotoUpload(Base):
     saveTime = Column(String(100), nullable=False)
     ownerName = Column(String(255), nullable=True)
     userName = Column(String(255), nullable=False, default="user")
+    serialNumber = Column(String(10), nullable=False, default="0000000")
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), onupdate=datetime.utcnow)
-
 
 
 class VersionManagement(Base):
@@ -76,6 +80,7 @@ class VersionManagement(Base):
 
     def __repr__(self):
         return f"<VersionManagement(version_name={self.version_name}, uploaded_by={self.uploaded_by})>"
+
 
 class VersionMapping(Base):
     __tablename__ = 'version_mapping'
