@@ -33,13 +33,13 @@ log_dir = "../logs"
 os.makedirs(log_dir, exist_ok=True)
 
 # 获取当前日期
-current_date = datetime.now()
+#current_date = datetime.now()
 
 # 格式化为 yyyyMMdd
-formatted_date = current_date.strftime("%Y%m%d")
+#formatted_date = current_date.strftime("%Y%m%d")
 
 # 设置日志文件路径
-log_file_path = os.path.join(log_dir, f"dev_{formatted_date}.txt")
+#log_file_path = os.path.join(log_dir, f"dev_{formatted_date}.txt")
 
 # 配置日志
 logging.basicConfig(
@@ -47,7 +47,7 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
         TimedRotatingFileHandler(
-            log_file_path,
+            filename=os.path.join(log_dir, "app_dev.txt"),  # 基础日志文件名
             when="midnight",  # 每天生成一个新日志文件
             interval=1,
             backupCount=30,  # 保留最近30天的日志
@@ -155,9 +155,25 @@ async def log_requests(request: Request, call_next):
     if request.url.path in excluded_paths:
         return await call_next(request)
 
-    request_body = await request.body()
+        # 尝试解析请求体
+    try:
+        if request.method in ["POST", "PUT", "PATCH"]:  # 针对需要处理请求体的 HTTP 方法
+            request_body = await request.json()
+            # 只记录文字或数字的字段
+            filtered_body = {key: value for key, value in request_body.items() if isinstance(value, (str, int, float))}
+        else:
+            filtered_body = {}
+    except Exception:
+        # 如果不是 JSON 格式，尝试解析 Form 数据
+        try:
+            form_data = await request.form()
+            filtered_body = {key: value for key, value in form_data.items() if isinstance(value, (str, int, float))}
+        except Exception:
+            filtered_body = {}
+
+    # 记录请求日志
     logger.info(
-        f"Request: method={request.method}, url={request.url}, body={request_body.decode('utf-8', 'ignore')}"
+        f"Request: method={request.method}, url={request.url}, body={filtered_body}"
     )
 
     # 调用下一个处理程序
