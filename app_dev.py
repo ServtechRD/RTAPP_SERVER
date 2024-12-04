@@ -22,6 +22,7 @@ from jose import JWTError, jwt
 import logging
 from logging.handlers import TimedRotatingFileHandler
 
+import re
 import os
 import uuid
 import json
@@ -33,13 +34,13 @@ log_dir = "../logs"
 os.makedirs(log_dir, exist_ok=True)
 
 # 获取当前日期
-#current_date = datetime.now()
+# current_date = datetime.now()
 
 # 格式化为 yyyyMMdd
-#formatted_date = current_date.strftime("%Y%m%d")
+# formatted_date = current_date.strftime("%Y%m%d")
 
 # 设置日志文件路径
-#log_file_path = os.path.join(log_dir, f"dev_{formatted_date}.txt")
+# log_file_path = os.path.join(log_dir, f"dev_{formatted_date}.txt")
 
 # 配置日志
 logging.basicConfig(
@@ -444,6 +445,30 @@ async def get_version(user_name: str):
     # 1. 下载 train.tflite 文件
 
 
+@app.get("/models/labels", response_model=list)
+async def get_model_labels(version: str):
+    # 搜索 train.tflite 文件路径
+    search_path = f"../Models/{version}/**/train.pbtxt"
+    files = glob.glob(search_path, recursive=True)
+    # 检查是否找到文件
+    if not files:
+        raise HTTPException(status_code=404, detail="train.pbtxt file not found")
+
+    try:
+        # 读取文件内容
+        # 获取找到的文件路径
+        file_path = files[0]
+        with open(file_path, "r") as file:
+            content = file.read()
+
+        # 使用正则表达式提取 `name` 字段
+        labels = re.findall(r"name:\s*'(.*?)'", content)
+        return labels
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error reading file: {str(e)}")
+
+
 @app.get("/models/file")
 async def download_tfile(version: str):
     # 搜索 train.tflite 文件路径
@@ -660,10 +685,80 @@ def get_unique_serials(db: Session = Depends(get_db)):
     return serial_numbers
 
 
-
 # 创建 JSend 响应
 def jsend_response(status: str, data: Optional[Any] = None, message: Optional[str] = None) -> JSendResponse:
     return JSendResponse(status=status, data=data, message=message)
+
+
+@app.put("/update_version/")
+async def upload_version(
+        versionName: str = Form(...),
+        showModel: bool = Form(...),
+        showScore: bool = Form(...),
+        threshold: float = Form(...),
+        usernameList: str = Form(...),
+        labelNames: str = Form(...),
+        labelShows: str = Form(...),
+        labelChecks: str = Form(...),
+        db: Session = Depends(get_db)
+):
+    try:
+        model_dir = f"../Models/{versionName}"
+
+        # 3. 写入 action.json 文件
+        action_data = {
+            "showModel": showModel,
+            "showScore": showScore,
+            "modelThreshold": threshold,
+            "labelNames": labelNames,
+            "labelShows": labelShows,
+            "labelChecks": labelChecks,
+        }
+        action_file_path = os.path.join(model_dir, "action.json")
+        with open(action_file_path, "w") as action_file:
+            json.dump(action_data, action_file)
+
+        # 4. 读取 last.json 文件并更新
+        last_file_path = "../Models/last.json"
+        try:
+            with open(last_file_path, "r") as last_file:
+                last_data = json.load(last_file)
+        except FileNotFoundError:
+            last_data = {}
+
+        # 将 usernameList 分隔并更新 last.json
+        usernames = usernameList.split("|")
+        passMap = {}
+        for username in usernames:
+            if (username in last_data.keys()):
+                if (last_data[username] == versionName):
+                    passMap[username] = True
+            last_data[username] = versionName
+
+        # 更新 last.json 文件
+        with open(last_file_path, "w") as last_file:
+            json.dump(last_data, last_file)
+
+        # 记录版本映射信息
+        for username in usernames:
+            # 跳過已經加入過的
+            if (username in passMap.keys()):
+                continue
+            version_mapping = VersionMapping(
+                version_name=versionName,
+                user_name=username
+            )
+            db.add(version_mapping)
+
+        db.commit()
+
+        # 成功响应
+        return jsend_response(status="success", data={"version_name": versionName},
+                              message="Version update successfully!")
+
+    except Exception as e:
+        # 错误响应
+        return jsend_response(status="error", message=str(e))
 
 
 # API：处理版本上传
