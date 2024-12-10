@@ -659,6 +659,67 @@ async def query_photos(
     return photos
 
 
+@app.get("/photos/download_zip/")
+async def download_photos_as_zip(
+    start_time: str,
+    end_time: str,
+    serialNumber: Optional[str] = None,
+    customerId: Optional[str] = None,
+    ownerName: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    # 构建时间过滤条件
+    filters = [
+        PhotoUpload.saveTime >= start_time,
+        PhotoUpload.saveTime <= end_time
+    ]
+    if serialNumber:
+        filters.append(PhotoUpload.serialNumber == serialNumber)
+    if customerId:
+        filters.append(PhotoUpload.customerId == customerId)
+    if ownerName:
+        filters.append(PhotoUpload.ownerName == ownerName)
+
+    # 查询数据库
+    photos = db.query(PhotoUpload).filter(and_(*filters)).all()
+    if not photos:
+        raise HTTPException(status_code=404, detail="No photos found for the specified criteria.")
+
+    # 定义目标目录
+    temp_dir = "../Download/Temp"
+    os.makedirs(temp_dir, exist_ok=True)
+
+    # 清空目标目录
+    for file in os.listdir(temp_dir):
+        file_path = os.path.join(temp_dir, file)
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+
+    # 处理文件
+    for photo in photos:
+        # 复制 file_path
+        if photo.file_path and os.path.exists(photo.file_path):
+            target_file_path = os.path.join(temp_dir, f"{photo.id}.png")
+            os.rename(photo.file_path, target_file_path)
+
+        # 复制 file_result_path
+        if photo.file_result_path and os.path.exists(photo.file_result_path):
+            target_result_path = os.path.join(temp_dir, f"{photo.id}_result.png")
+            os.rename(photo.file_result_path, target_result_path)
+
+    # 压缩目录为 zip
+    zip_file_path = "../Download/photos.zip"
+    with zipfile.ZipFile(zip_file_path, "w") as zipf:
+        for root, dirs, files in os.walk(temp_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, temp_dir)  # 相对路径
+                zipf.write(file_path, arcname=arcname)
+
+    # 返回 zip 文件
+    return FileResponse(zip_file_path, media_type="application/zip", filename="photos.zip")
+
+
 @app.get("/unique_owners/", response_model=List[str])
 def get_unique_owners(db: Session = Depends(get_db)):
     # 查询不重复的 ownerName
