@@ -592,7 +592,7 @@ async def upload_photo(
 
     # 如果未輸入, 表示是舊版本
     sn = serialNumber
-    if len(sn) < 0:
+    if len(sn) == 0:
         sn = "0000000"
 
     # 将文件名保存到数据库
