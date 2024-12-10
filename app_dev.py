@@ -19,6 +19,8 @@ from pydantic import BaseModel
 from typing import Any, List, Optional
 from jose import JWTError, jwt
 
+import shutil
+
 import logging
 from logging.handlers import TimedRotatingFileHandler
 
@@ -700,12 +702,12 @@ async def download_photos_as_zip(
         # 复制 file_path
         if photo.file_path and os.path.exists(photo.file_path):
             target_file_path = os.path.join(temp_dir, f"{photo.id}.png")
-            os.rename(photo.file_path, target_file_path)
+            shutil.copy(photo.file_path, target_file_path)
 
         # 复制 file_result_path
         if photo.file_result_path and os.path.exists(photo.file_result_path):
             target_result_path = os.path.join(temp_dir, f"{photo.id}_result.png")
-            os.rename(photo.file_result_path, target_result_path)
+            shutil.copy(photo.file_result_path, target_result_path)
 
     # 压缩目录为 zip
     zip_file_path = "../Download/photos.zip"
