@@ -597,6 +597,11 @@ async def upload_photo(
     if len(sn) == 0:
         sn = "0000000"
 
+    ownerType = 0
+    # 有非數字
+    if not ownerName.isdigit():
+        ownerType = 1
+
     # 将文件名保存到数据库
     new_photo = PhotoUpload(
         file_path=file_path_location,  # 只保存文件名
@@ -609,6 +614,7 @@ async def upload_photo(
         saveTime=saveTime,
         ownerName=ownerName,
         userName=userName,
+        ownerType=ownerType,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )
@@ -663,12 +669,12 @@ async def query_photos(
 
 @app.get("/photos/download_zip/")
 async def download_photos_as_zip(
-    start_time: str,
-    end_time: str,
-    serialNumber: Optional[str] = None,
-    customerId: Optional[str] = None,
-    ownerName: Optional[str] = None,
-    db: Session = Depends(get_db)
+        start_time: str,
+        end_time: str,
+        serialNumber: Optional[str] = None,
+        customerId: Optional[str] = None,
+        ownerName: Optional[str] = None,
+        db: Session = Depends(get_db)
 ):
     # 构建时间过滤条件
     filters = [
@@ -824,15 +830,10 @@ async def upload_version(
         return jsend_response(status="error", message=str(e))
 
 
-# API：处理版本上传
-@app.post("/upload_version/")
+@app.post("/upload_version2/")
 async def upload_version(
         versionName: str = Form(...),
         zipFile: UploadFile = File(...),
-        showModel: bool = Form(...),
-        showScore: bool = Form(...),
-        threshold: float = Form(...),
-        usernameList: str = Form(...),
         db: Session = Depends(get_db)
 ):
     try:
@@ -853,11 +854,157 @@ async def upload_version(
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Error extracting zip file: {str(e)}")
 
+        # 5. 记录 versionManagement 和 versionMapping 数据
+        # 记录版本管理信息
+        version_management = VersionManagement(
+            version_name=versionName,
+            file_path=model_dir,
+            uploaded_by="System",  # 可以替换为实际上传用户
+        )
+        db.add(version_management)
+        db.commit()
+
+        # 成功响应
+        return jsend_response(status="success", data={"version_name": versionName},
+                              message="Version uploaded and processed successfully!")
+
+    except Exception as e:
+        # 错误响应
+        return jsend_response(status="error", message=str(e))
+
+
+@app.post("/upload_version2/")
+async def upload_version(
+        versionName: str = Form(...),
+        zipFile: UploadFile = File(...),
+        db: Session = Depends(get_db)
+):
+    try:
+        # 1. 创建目录 ../Models/versionName
+        model_dir = f"../Models/{versionName}"
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+
+        # 2. 解压 zipFile 到 ../Models/versionName 目录
+        zip_file_path = f"../Models/{versionName}/{zipFile.filename}"
+        with open(zip_file_path, "wb") as f:
+            f.write(await zipFile.read())
+
+        # 解压 zip 文件
+        try:
+            with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+                zip_ref.extractall(model_dir)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error extracting zip file: {str(e)}")
+
+        action_data = {}
+        action_file_path = os.path.join(model_dir, "action.json")
+        with open(action_file_path, "w") as action_file:
+            json.dump(action_data, action_file)
+
+        # 5. 记录 versionManagement 和 versionMapping 数据
+        # 记录版本管理信息
+        version_management = VersionManagement(
+            version_name=versionName,
+            file_path=model_dir,
+            uploaded_by="System",  # 可以替换为实际上传用户
+        )
+        db.add(version_management)
+        db.commit()
+
+        # 成功响应
+        return jsend_response(status="success", data={"version_name": versionName},
+                              message="Version uploaded and processed successfully!")
+
+    except Exception as e:
+        # 错误响应
+        return jsend_response(status="error", message=str(e))
+
+
+# API：处理版本上传
+@app.post("/upload_version2/action")
+async def upload_version(
+        versionName: str = Form(...),
+        showModel: bool = Form(...),
+        showScore: bool = Form(...),
+        threshold: float = Form(...),
+
+        labelThreshold: str = Form(...),
+        labelNames: str = Form(...),
+        labelShows: str = Form(...),
+        labelChecks: str = Form(...),
+        taskAlias: str = Form(...),
+
+        labelTaskNames: str = Form(...),
+
+        usernameList: str = Form(...),
+        db: Session = Depends(get_db)
+):
+    try:
+        # 1. 创建目录 ../Models/versionName
+        model_dir = f"../Models/{versionName}"
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+
+        labelThresholdDict = json.loads(labelThreshold)
+        taskAliasDict = json.loads(taskAlias)
+
+        # 将字符串解析为字典
+        labelNameDict = {
+            pair.split("@")[0]: pair.split("@")[1]
+            for pair in labelNames.split("|")
+        }
+
+        labelTaskDict = {
+            pair.split("@")[0]: pair.split("@")[1]
+            for pair in labelTaskNames.split("|")
+        }
+
+        labelChecksDict = {
+            pair.split("@")[0]: pair.split("@")[1]
+            for pair in labelChecks.split("|")
+        }
+
+        taskInfos = []
+        task0 = []
+        task0.append({"taskName": "安全帽", "taskLabels": [], "checkLabels": []})
+        task0.append({"taskName": "安全帶(掛勾)", "taskLabels": [], "checkLabels": []})
+        task1 = []
+        task1.append({"taskName": "安全帽", "taskLabels": [], "checkLabels": []})
+        task1.append({"taskName": "安全帶", "taskLabels": [], "checkLabels": []})
+
+        taskInfos.append(task0)
+        taskInfos.append(task1)
+
+        for label in labelTaskDict.keys():
+            taskName = labelTaskDict[label]
+            for taskGroup in taskInfos:
+                for taskItems in taskGroup:
+                    if (taskItems["taskName"] == taskName):
+                        lblthreshold = threshold
+                        if label in labelThresholdDict.keys():
+                            lblthreshold = labelThresholdDict[label]
+
+                        labelItem = {"label": label, "name": labelNameDict[label], "labelThreshold": lblthreshold}
+                        taskItems["taskLabels"].append(labelItem)
+
+                        if label in labelChecksDict.keys():
+                            taskItems["checkLabels"].append(label)
+
+
+
         # 3. 写入 action.json 文件
         action_data = {
             "showModel": showModel,
             "showScore": showScore,
-            "modelThreshold": threshold
+            "modelThreshold": threshold,
+            "labelThreshold": labelThresholdDict,
+            "labelNames": labelNames,
+            "labelShows": labelShows,
+            "labelChecks": labelChecks,
+            "taskAlias": taskAliasDict,
+            "taskInfos": taskInfos,
+
         }
         action_file_path = os.path.join(model_dir, "action.json")
         with open(action_file_path, "w") as action_file:

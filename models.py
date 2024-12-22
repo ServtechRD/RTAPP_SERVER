@@ -67,6 +67,7 @@ class PhotoUpload(Base):
     serialNumber = Column(String(10), nullable=False, default="0000000")
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), onupdate=datetime.utcnow)
+    ownerType = Column(Integer, default=0)  # 新增字段，整型，默认值为 0
 
 
 class VersionManagement(Base):
