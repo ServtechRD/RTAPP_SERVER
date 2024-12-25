@@ -831,7 +831,7 @@ async def upload_version(
 
 
 @app.post("/upload_version2/")
-async def upload_version(
+async def upload_version2(
         versionName: str = Form(...),
         zipFile: UploadFile = File(...),
         db: Session = Depends(get_db)
@@ -873,10 +873,14 @@ async def upload_version(
         return jsend_response(status="error", message=str(e))
 
 
-@app.post("/upload_version2/")
+@app.post("/upload_version/")
 async def upload_version(
         versionName: str = Form(...),
         zipFile: UploadFile = File(...),
+        showModel: bool = Form(...),
+        showScore: bool = Form(...),
+        threshold: float = Form(...),
+        usernameList: str = Form(...),
         db: Session = Depends(get_db)
 ):
     try:
@@ -897,11 +901,33 @@ async def upload_version(
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Error extracting zip file: {str(e)}")
 
-        action_data = {}
+        # 3. 写入 action.json 文件
+        action_data = {
+            "showModel": showModel,
+            "showScore": showScore,
+            "modelThreshold": threshold
+        }
         action_file_path = os.path.join(model_dir, "action.json")
         with open(action_file_path, "w") as action_file:
             json.dump(action_data, action_file)
 
+        # 4. 读取 last.json 文件并更新
+        last_file_path = "../Models/last.json"
+        try:
+            with open(last_file_path, "r") as last_file:
+                last_data = json.load(last_file)
+        except FileNotFoundError:
+            last_data = {}
+
+        # 将 usernameList 分隔并更新 last.json
+        usernames = usernameList.split("|")
+        for username in usernames:
+            last_data[username] = versionName
+
+        # 更新 last.json 文件
+        with open(last_file_path, "w") as last_file:
+            json.dump(last_data, last_file)
+
         # 5. 记录 versionManagement 和 versionMapping 数据
         # 记录版本管理信息
         version_management = VersionManagement(
@@ -912,6 +938,16 @@ async def upload_version(
         db.add(version_management)
         db.commit()
 
+        # 记录版本映射信息
+        for username in usernames:
+            version_mapping = VersionMapping(
+                version_name=versionName,
+                user_name=username
+            )
+            db.add(version_mapping)
+
+        db.commit()
+
         # 成功响应
         return jsend_response(status="success", data={"version_name": versionName},
                               message="Version uploaded and processed successfully!")
@@ -919,6 +955,7 @@ async def upload_version(
     except Exception as e:
         # 错误响应
         return jsend_response(status="error", message=str(e))
+
 
 
 # API：处理版本上传
