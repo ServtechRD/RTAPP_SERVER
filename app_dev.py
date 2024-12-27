@@ -516,11 +516,11 @@ async def get_action(version: str):
 def create_upload_path(cid, lid, sn):
     # 获取当前时间并格式化为 yyyy/MM/dd
     now = datetime.now()
-    dir_path = "../Upload/NA"
+    dir_path = "/home/Upload/NA"
     if (len(sn) > 0):
-        dir_path = now.strftime(f"../Upload/{sn}/%Y/%m/%d")
+        dir_path = now.strftime(f"/home/Upload/{sn}/%Y/%m/%d")
     else:
-        dir_path = now.strftime(f"../Upload/{cid}/{lid}/%Y/%m/%d")
+        dir_path = now.strftime(f"/home/Upload/{cid}/{lid}/%Y/%m/%d")
     print("create path = " + dir_path)
     # 如果目录不存在，则创建
     os.makedirs(dir_path, exist_ok=True)
