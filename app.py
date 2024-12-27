@@ -522,6 +522,7 @@ def create_upload_path(cid, lid, sn):
     else:
         dir_path = now.strftime(f"/home/Upload/{cid}/{lid}/%Y/%m/%d")
     print("create path = " + dir_path)
+    logger.info(f"creat path = {dir_path}")
     # 如果目录不存在，则创建
     os.makedirs(dir_path, exist_ok=True)
     return dir_path
