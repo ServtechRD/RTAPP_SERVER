@@ -550,6 +550,8 @@ async def upload_photo(
         serialNumber=Form(""),
         db: Session = Depends(get_db)
 ):
+    logger.info(f"start to create upload_path :{serialNumber}")
+
     # 创建保存文件的目录
     upload_dir = create_upload_path(customerId, locationId, serialNumber)
 
@@ -563,6 +565,7 @@ async def upload_photo(
 
     # return "success"
 
+    logger.info(f"start to save image :{file.filename} ")
     # 保存图片文件
     file_path_extension = file.filename.split(".")[-1]  # 获取文件扩展名
     file_name = generate_file_name(file_path_extension, unique_id)  # 生成新的文件名
@@ -580,6 +583,7 @@ async def upload_photo(
             print("start to write result image")
             f.write(await file_result.read())  # 保存文件
 
+    logger.info("start to save txt ")
     # 保存任意文件 (result)
     result_extension = "txt"
     result_file_name = generate_file_name(result_extension, unique_id)
@@ -602,6 +606,7 @@ async def upload_photo(
     if not ownerName.isdigit():
         ownerType = 1
 
+    logger.info("start to save database ")
     # 将文件名保存到数据库
     new_photo = PhotoUpload(
         file_path=file_path_location,  # 只保存文件名
@@ -623,6 +628,7 @@ async def upload_photo(
     db.refresh(new_photo)
 
     print("finish")
+    logger.info("photo save finish ")
 
     # 返回文件名而不是文件内容
     return {"message": "File uploaded successfully", "photo": {
@@ -957,7 +963,6 @@ async def upload_version(
         return jsend_response(status="error", message=str(e))
 
 
-
 # API：处理版本上传
 @app.post("/upload_version2/action")
 async def upload_version(
@@ -1027,8 +1032,6 @@ async def upload_version(
 
                         if label in labelChecksDict.keys():
                             taskItems["checkLabels"].append(label)
-
-
 
         # 3. 写入 action.json 文件
         action_data = {

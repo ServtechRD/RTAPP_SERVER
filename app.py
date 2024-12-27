@@ -19,6 +19,8 @@ from pydantic import BaseModel
 from typing import Any, List, Optional
 from jose import JWTError, jwt
 
+import shutil
+
 import logging
 from logging.handlers import TimedRotatingFileHandler
 
@@ -548,6 +550,8 @@ async def upload_photo(
         serialNumber=Form(""),
         db: Session = Depends(get_db)
 ):
+    logger.info(f"start to create upload_path :{serialNumber}")
+
     # 创建保存文件的目录
     upload_dir = create_upload_path(customerId, locationId, serialNumber)
 
@@ -561,6 +565,7 @@ async def upload_photo(
 
     # return "success"
 
+    logger.info(f"start to save image :{file.filename} ")
     # 保存图片文件
     file_path_extension = file.filename.split(".")[-1]  # 获取文件扩展名
     file_name = generate_file_name(file_path_extension, unique_id)  # 生成新的文件名
@@ -578,6 +583,7 @@ async def upload_photo(
             print("start to write result image")
             f.write(await file_result.read())  # 保存文件
 
+    logger.info("start to save txt ")
     # 保存任意文件 (result)
     result_extension = "txt"
     result_file_name = generate_file_name(result_extension, unique_id)
@@ -595,6 +601,12 @@ async def upload_photo(
     if len(sn) == 0:
         sn = "0000000"
 
+    ownerType = 0
+    # 有非數字
+    if not ownerName.isdigit():
+        ownerType = 1
+
+    logger.info("start to save database ")
     # 将文件名保存到数据库
     new_photo = PhotoUpload(
         file_path=file_path_location,  # 只保存文件名
@@ -607,6 +619,7 @@ async def upload_photo(
         saveTime=saveTime,
         ownerName=ownerName,
         userName=userName,
+        ownerType=ownerType,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )
@@ -615,6 +628,7 @@ async def upload_photo(
     db.refresh(new_photo)
 
     print("finish")
+    logger.info("photo save finish ")
 
     # 返回文件名而不是文件内容
     return {"message": "File uploaded successfully", "photo": {
@@ -661,12 +675,12 @@ async def query_photos(
 
 @app.get("/photos/download_zip/")
 async def download_photos_as_zip(
-    start_time: str,
-    end_time: str,
-    serialNumber: Optional[str] = None,
-    customerId: Optional[str] = None,
-    ownerName: Optional[str] = None,
-    db: Session = Depends(get_db)
+        start_time: str,
+        end_time: str,
+        serialNumber: Optional[str] = None,
+        customerId: Optional[str] = None,
+        ownerName: Optional[str] = None,
+        db: Session = Depends(get_db)
 ):
     # 构建时间过滤条件
     filters = [
@@ -700,12 +714,12 @@ async def download_photos_as_zip(
         # 复制 file_path
         if photo.file_path and os.path.exists(photo.file_path):
             target_file_path = os.path.join(temp_dir, f"{photo.id}.png")
-            os.rename(photo.file_path, target_file_path)
+            shutil.copy(photo.file_path, target_file_path)
 
         # 复制 file_result_path
         if photo.file_result_path and os.path.exists(photo.file_result_path):
             target_result_path = os.path.join(temp_dir, f"{photo.id}_result.png")
-            os.rename(photo.file_result_path, target_result_path)
+            shutil.copy(photo.file_result_path, target_result_path)
 
     # 压缩目录为 zip
     zip_file_path = "../Download/photos.zip"
@@ -718,8 +732,6 @@ async def download_photos_as_zip(
 
     # 返回 zip 文件
     return FileResponse(zip_file_path, media_type="application/zip", filename="photos.zip")
-
-
 
 
 @app.get("/unique_owners/", response_model=List[str])
@@ -824,7 +836,49 @@ async def upload_version(
         return jsend_response(status="error", message=str(e))
 
 
-# API：处理版本上传
+@app.post("/upload_version2/")
+async def upload_version2(
+        versionName: str = Form(...),
+        zipFile: UploadFile = File(...),
+        db: Session = Depends(get_db)
+):
+    try:
+        # 1. 创建目录 ../Models/versionName
+        model_dir = f"../Models/{versionName}"
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+
+        # 2. 解压 zipFile 到 ../Models/versionName 目录
+        zip_file_path = f"../Models/{versionName}/{zipFile.filename}"
+        with open(zip_file_path, "wb") as f:
+            f.write(await zipFile.read())
+
+        # 解压 zip 文件
+        try:
+            with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+                zip_ref.extractall(model_dir)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error extracting zip file: {str(e)}")
+
+        # 5. 记录 versionManagement 和 versionMapping 数据
+        # 记录版本管理信息
+        version_management = VersionManagement(
+            version_name=versionName,
+            file_path=model_dir,
+            uploaded_by="System",  # 可以替换为实际上传用户
+        )
+        db.add(version_management)
+        db.commit()
+
+        # 成功响应
+        return jsend_response(status="success", data={"version_name": versionName},
+                              message="Version uploaded and processed successfully!")
+
+    except Exception as e:
+        # 错误响应
+        return jsend_response(status="error", message=str(e))
+
+
 @app.post("/upload_version/")
 async def upload_version(
         versionName: str = Form(...),
@@ -858,6 +912,139 @@ async def upload_version(
             "showModel": showModel,
             "showScore": showScore,
             "modelThreshold": threshold
+        }
+        action_file_path = os.path.join(model_dir, "action.json")
+        with open(action_file_path, "w") as action_file:
+            json.dump(action_data, action_file)
+
+        # 4. 读取 last.json 文件并更新
+        last_file_path = "../Models/last.json"
+        try:
+            with open(last_file_path, "r") as last_file:
+                last_data = json.load(last_file)
+        except FileNotFoundError:
+            last_data = {}
+
+        # 将 usernameList 分隔并更新 last.json
+        usernames = usernameList.split("|")
+        for username in usernames:
+            last_data[username] = versionName
+
+        # 更新 last.json 文件
+        with open(last_file_path, "w") as last_file:
+            json.dump(last_data, last_file)
+
+        # 5. 记录 versionManagement 和 versionMapping 数据
+        # 记录版本管理信息
+        version_management = VersionManagement(
+            version_name=versionName,
+            file_path=model_dir,
+            uploaded_by="System",  # 可以替换为实际上传用户
+        )
+        db.add(version_management)
+        db.commit()
+
+        # 记录版本映射信息
+        for username in usernames:
+            version_mapping = VersionMapping(
+                version_name=versionName,
+                user_name=username
+            )
+            db.add(version_mapping)
+
+        db.commit()
+
+        # 成功响应
+        return jsend_response(status="success", data={"version_name": versionName},
+                              message="Version uploaded and processed successfully!")
+
+    except Exception as e:
+        # 错误响应
+        return jsend_response(status="error", message=str(e))
+
+
+# API：处理版本上传
+@app.post("/upload_version2/action")
+async def upload_version(
+        versionName: str = Form(...),
+        showModel: bool = Form(...),
+        showScore: bool = Form(...),
+        threshold: float = Form(...),
+
+        labelThreshold: str = Form(...),
+        labelNames: str = Form(...),
+        labelShows: str = Form(...),
+        labelChecks: str = Form(...),
+        taskAlias: str = Form(...),
+
+        labelTaskNames: str = Form(...),
+
+        usernameList: str = Form(...),
+        db: Session = Depends(get_db)
+):
+    try:
+        # 1. 创建目录 ../Models/versionName
+        model_dir = f"../Models/{versionName}"
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+
+        labelThresholdDict = json.loads(labelThreshold)
+        taskAliasDict = json.loads(taskAlias)
+
+        # 将字符串解析为字典
+        labelNameDict = {
+            pair.split("@")[0]: pair.split("@")[1]
+            for pair in labelNames.split("|")
+        }
+
+        labelTaskDict = {
+            pair.split("@")[0]: pair.split("@")[1]
+            for pair in labelTaskNames.split("|")
+        }
+
+        labelChecksDict = {
+            pair.split("@")[0]: pair.split("@")[1]
+            for pair in labelChecks.split("|")
+        }
+
+        taskInfos = []
+        task0 = []
+        task0.append({"taskName": "安全帽", "taskLabels": [], "checkLabels": []})
+        task0.append({"taskName": "安全帶(掛勾)", "taskLabels": [], "checkLabels": []})
+        task1 = []
+        task1.append({"taskName": "安全帽", "taskLabels": [], "checkLabels": []})
+        task1.append({"taskName": "安全帶", "taskLabels": [], "checkLabels": []})
+
+        taskInfos.append(task0)
+        taskInfos.append(task1)
+
+        for label in labelTaskDict.keys():
+            taskName = labelTaskDict[label]
+            for taskGroup in taskInfos:
+                for taskItems in taskGroup:
+                    if (taskItems["taskName"] == taskName):
+                        lblthreshold = threshold
+                        if label in labelThresholdDict.keys():
+                            lblthreshold = labelThresholdDict[label]
+
+                        labelItem = {"label": label, "name": labelNameDict[label], "labelThreshold": lblthreshold}
+                        taskItems["taskLabels"].append(labelItem)
+
+                        if label in labelChecksDict.keys():
+                            taskItems["checkLabels"].append(label)
+
+        # 3. 写入 action.json 文件
+        action_data = {
+            "showModel": showModel,
+            "showScore": showScore,
+            "modelThreshold": threshold,
+            "labelThreshold": labelThresholdDict,
+            "labelNames": labelNames,
+            "labelShows": labelShows,
+            "labelChecks": labelChecks,
+            "taskAlias": taskAliasDict,
+            "taskInfos": taskInfos,
+
         }
         action_file_path = os.path.join(model_dir, "action.json")
         with open(action_file_path, "w") as action_file:
