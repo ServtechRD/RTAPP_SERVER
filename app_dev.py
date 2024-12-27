@@ -525,6 +525,7 @@ def create_upload_path(cid, lid, sn):
     logger.info(f"creat path = {dir_path}")
     # 如果目录不存在，则创建
     os.makedirs(dir_path, exist_ok=True)
+    logger.info(f"call os create folder = {dir_path}")
     return dir_path
 
 
