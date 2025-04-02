@@ -33,7 +33,7 @@ def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
 def authenticate_user(session: Session, username: str, password: str):
-    user = session.query(User).filter(User.username == username).first()
-    if not user or not verify_password(password, user.password):
+    user = session.query(User).filter(User.username.ilike(username)).first()
+    if not user or not verify_password(password.lower(), user.password):
         return False
     return user
