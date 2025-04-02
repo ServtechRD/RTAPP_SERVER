@@ -18,6 +18,7 @@ from auth import get_password_hash
 from pydantic import BaseModel
 from typing import Any, List, Optional
 from jose import JWTError, jwt
+from starlette.status import HTTP_401_UNAUTHORIZED
 
 import shutil
 
@@ -30,6 +31,8 @@ import uuid
 import json
 import glob
 import zipfile
+import random
+import string
 
 # 创建日志目录
 log_dir = "../logs"
@@ -117,6 +120,39 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     print(f"user is {user.username} mode = {user.mode}")
 
     return user
+
+
+
+API_KEY_FILE = "api_keys.json"
+
+def generate_api_key(length=10):
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
+
+def load_or_create_api_keys():
+    if os.path.exists(API_KEY_FILE):
+        with open(API_KEY_FILE, "r") as f:
+            data = json.load(f)
+            return set(data.get("keys", []))
+    else:
+        # 檔案不存在，自動產生一組 key
+        new_key = generate_api_key()
+        with open(API_KEY_FILE, "w") as f:
+            json.dump({"keys": [new_key]}, f, indent=2)
+        print(f"[INFO] 新 API 金鑰產生：{new_key}")
+        return {new_key}
+
+# 啟動時載入
+VALID_API_KEYS = load_or_create_api_keys()
+
+
+@app.middleware("http")
+async def check_api_key(request: Request, call_next):
+    if request.url.path.startswith("/api/"):
+        api_key = request.headers.get("X-API-KEY")
+        if api_key not in VALID_API_KEYS:
+            raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid API Key")
+    response = await call_next(request)
+    return response
 
 
 @app.exception_handler(StarletteHTTPException)
@@ -749,6 +785,10 @@ def get_unique_owners(db: Session = Depends(get_db)):
     return owner_names
 
 
+
+
+
+
 @app.get("/unique_serials/", response_model=List[str])
 def get_unique_serials(db: Session = Depends(get_db)):
     # 查询不重复的 serialnumber
@@ -1165,3 +1205,74 @@ def download_photo(photo_id: int, result: bool = Query(False), db: Session = Dep
 
     # 返回文件以供展示，不设置 filename 以避免下载提示
     return FileResponse(path=file_path, media_type=media_type)
+
+
+
+@app.get("/api/work-status-list", response_model=List[str])
+def get_unique_owners_by_date(
+    start_date: str,
+    end_date: str,
+    db: Session = Depends(get_db)
+):
+    try:
+        # 验证日期格式并转换为datetime对象
+        start_datetime = datetime.strptime(start_date, "%Y-%m-%d")
+        end_datetime = datetime.strptime(end_date, "%Y-%m-%d")
+        
+        # 设置开始时间为当天的00:00:00，结束时间为当天的23:59:59
+        start_datetime = start_datetime.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_datetime = end_datetime.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        # 查询指定时间范围内的不重复ownerName
+        unique_owners = (
+            db.query(distinct(PhotoUpload.ownerName))
+            .filter(
+                PhotoUpload.ownerName != None,
+                PhotoUpload.updated_at >= start_datetime,
+                PhotoUpload.updated_at <= end_datetime
+            )
+            .all()
+        )
+        
+        # 提取查询结果中的ownerName值
+        owner_names = [owner[0] for owner in unique_owners]
+        
+        return owner_names
+        
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid date format. Please use YYYY-MM-DD format."
+        )
+
+
+@app.get("/api/work-status")
+def check_owner_by_date(
+    start_date: str,
+    end_date: str,
+    id: str,
+    db: Session = Depends(get_db)
+):
+    try:
+        # 验证日期格式并转换为datetime对象
+        start_datetime = datetime.strptime(start_date, "%Y-%m-%d")
+        end_datetime = datetime.strptime(end_date, "%Y-%m-%d")
+        
+        # 设置开始时间为当天的00:00:00，结束时间为当天的23:59:59
+        start_datetime = start_datetime.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_datetime = end_datetime.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        # 查询指定时间范围内是否存在该owner_name的记录
+        exists = db.query(PhotoUpload).filter(
+            PhotoUpload.ownerName == id,
+            PhotoUpload.updated_at >= start_datetime,
+            PhotoUpload.updated_at <= end_datetime
+        ).first() is not None
+        
+        return {id: "Y" if exists else "N"}
+        
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid date format. Please use YYYY-MM-DD format."
+        )
