@@ -147,6 +147,9 @@ VALID_API_KEYS = load_or_create_api_keys()
 
 @app.middleware("http")
 async def check_api_key(request: Request, call_next):
+     # 跳過 CORS 預檢（瀏覽器會送 OPTIONS）
+    if request.method == "OPTIONS":
+        return await call_next(request)
     if request.url.path.startswith("/api/"):
         api_key = request.headers.get("X-API-KEY")
         if api_key not in VALID_API_KEYS:
@@ -233,7 +236,7 @@ async def log_requests(request: Request, call_next):
 @app.post("/register")
 async def register(username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
     # 检查用户名是否已经存在
-    user = db.query(User).filter(User.username == username).first()
+    user = await db.query(User).filter(User.username == username).first()
     if user:
         raise HTTPException(status_code=400, detail="Username already registered")
 
@@ -574,6 +577,7 @@ def generate_file_name(extension: str, unique_id):
 
 
 # 上传文件处理
+@app.post("/photos")
 @app.post("/photos/")
 async def upload_photo(
         file: UploadFile = File(...),
@@ -1186,6 +1190,8 @@ def download_photo(photo_id: int, result: bool = Query(False), db: Session = Dep
     return FileResponse(path=file_path, media_type="image/jpeg", filename=os.path.basename(file_path))
 
 
+
+
 @app.get("/photos/show/{photo_id}")
 def download_photo(photo_id: int, result: bool = Query(False), db: Session = Depends(get_db)):
     # 根据 photo_id 查询数据库，获取文件路径
@@ -1228,8 +1234,8 @@ def get_unique_owners_by_date(
             db.query(distinct(PhotoUpload.ownerName))
             .filter(
                 PhotoUpload.ownerName != None,
-                PhotoUpload.updated_at >= start_datetime,
-                PhotoUpload.updated_at <= end_datetime
+                PhotoUpload.saveTime >= start_datetime,
+                PhotoUpload.saveTime <= end_datetime
             )
             .all()
         )
@@ -1265,8 +1271,8 @@ def check_owner_by_date(
         # 查询指定时间范围内是否存在该owner_name的记录
         exists = db.query(PhotoUpload).filter(
             PhotoUpload.ownerName == id,
-            PhotoUpload.updated_at >= start_datetime,
-            PhotoUpload.updated_at <= end_datetime
+            PhotoUpload.saveTime >= start_datetime,
+            PhotoUpload.saveTime <= end_datetime
         ).first() is not None
         
         return {id: "Y" if exists else "N"}
@@ -1276,3 +1282,25 @@ def check_owner_by_date(
             status_code=400,
             detail="Invalid date format. Please use YYYY-MM-DD format."
         )
+
+
+@app.get("/photos/download_result/{photo_id}")
+def download_result_photo(photo_id: int, db: Session = Depends(get_db)):
+    # 根據 photo_id 查詢數據庫，獲取文件路徑
+    photo = db.query(PhotoUpload).filter(PhotoUpload.id == photo_id).first()
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+    # 構建結果照片路徑
+    result_path = photo.file_path + "_result.png"
+    
+    # 檢查結果文件是否存在
+    if not os.path.exists(result_path):
+        raise HTTPException(status_code=404, detail="Result photo not found")
+
+    # 返回文件以供下載
+    return FileResponse(
+        path=result_path,
+        media_type="image/png",
+        filename=f"result_{os.path.basename(photo.file_path)}.png"
+    )
