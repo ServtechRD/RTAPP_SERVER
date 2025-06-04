@@ -526,6 +526,21 @@ async def download_tfile(version: str):
     # 返回文件作为下载
     return FileResponse(path=file_path, media_type="application/octet-stream", filename="train.tflite")
 
+@app.get("/models/file2")
+async def download_tfile(version: str):
+    # 搜索 train.tflite 文件路径
+    search_path = f"../Models/{version}/**/train2.tflite"
+    files = glob.glob(search_path, recursive=True)
+
+    # 检查是否找到文件
+    if not files:
+        raise HTTPException(status_code=404, detail="train2.tflite file not found")
+
+    # 获取找到的文件路径
+    file_path = files[0]
+
+    # 返回文件作为下载
+    return FileResponse(path=file_path, media_type="application/octet-stream", filename="train2.tflite")
 
 # 2. 获取 action.json 内容
 @app.get("/models/action")
