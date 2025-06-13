@@ -19,6 +19,8 @@ from pydantic import BaseModel
 from typing import Any, List, Optional
 from jose import JWTError, jwt
 from starlette.status import HTTP_401_UNAUTHORIZED
+from starlette.middleware.base import BaseHTTPMiddleware
+
 
 import shutil
 
@@ -66,16 +68,27 @@ logging.basicConfig(
 # 获取 logger
 logger = logging.getLogger(__name__)
 
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50MB
+
+class LimitUploadSizeMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        content_length = request.headers.get('content-length')
+        if content_length and int(content_length) > MAX_UPLOAD_SIZE:
+            return Response("Request entity too large", status_code=413)
+        return await call_next(request)
+
 app = FastAPI()
 
 # CORS 配置
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # 根据需要配置来源
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+#app.add_middleware(
+#    CORSMiddleware,
+#    allow_origins=["*"],  # 根据需要配置来源
+#    allow_credentials=True,
+#    allow_methods=["*"],
+#    allow_headers=["*"],
+#)
+
+app.add_middleware(LimitUploadSizeMiddleware)
 
 # 设定静态文件目录 (即React build后的目录)
 # app.mount("/static", StaticFiles(directory="build/static"), name="static")
@@ -153,7 +166,15 @@ async def check_api_key(request: Request, call_next):
     if request.url.path.startswith("/api/"):
         api_key = request.headers.get("X-API-KEY")
         if api_key not in VALID_API_KEYS:
-            raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid API Key")
+           return JSONResponse(
+                  status_code=HTTP_401_UNAUTHORIZED,
+                  content={
+                      "success": False,
+                      "message": "Invalid API Key",
+                      "data": None
+                  }
+              )                             
+            #raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid API Key")
     response = await call_next(request)
     return response
 
@@ -463,14 +484,14 @@ def get_tasks(db: Session = Depends(get_db)):
 async def get_version(user_name: str):
     # 指定 JSON 文件路径
     file_path = "../Models/last.json"
-
+    
     # 检查文件是否存在
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
 
     # 读取 JSON 文件
     try:
-        with open(file_path, "r") as file:
+        with open(file_path, "r",encoding='utf-8') as file:
             data = json.load(file)
     except json.JSONDecodeError:
         raise HTTPException(status_code=500, detail="Error reading JSON file")
@@ -499,7 +520,7 @@ async def get_model_labels(version: str):
         # 读取文件内容
         # 获取找到的文件路径
         file_path = files[0]
-        with open(file_path, "r") as file:
+        with open(file_path, "r",encoding='utf-8') as file:
             content = file.read()
 
         # 使用正则表达式提取 `name` 字段
@@ -558,7 +579,7 @@ async def get_action(version: str):
 
     # 读取 JSON 文件内容并返回
     try:
-        with open(file_path, "r") as file:
+        with open(file_path, "r",encoding='utf-8') as file:
             data = json.load(file)
         return JSONResponse(content=data)
     except json.JSONDecodeError:
@@ -570,11 +591,11 @@ async def get_action(version: str):
 def create_upload_path(cid, lid, sn):
     # 获取当前时间并格式化为 yyyy/MM/dd
     now = datetime.now()
-    dir_path = "/home/Upload/NA"
+    dir_path = "../Upload/NA"
     if (len(sn) > 0):
-        dir_path = now.strftime(f"/home/Upload/{sn}/%Y/%m/%d")
+        dir_path = now.strftime(f"../Upload/{sn}/%Y/%m/%d")
     else:
-        dir_path = now.strftime(f"/home/Upload/{cid}/{lid}/%Y/%m/%d")
+        dir_path = now.strftime(f"../Upload/{cid}/{lid}/%Y/%m/%d")
     print("create path = " + dir_path)
     logger.info(f"creat path = {dir_path}")
     # 如果目录不存在，则创建
@@ -646,7 +667,7 @@ async def upload_photo(
     result_file_name = generate_file_name(result_extension, unique_id)
     result_file_location = os.path.join(upload_dir, result_file_name)
     print(result_file_location)
-    with open(result_file_location, "w") as f:
+    with open(result_file_location, "w",encoding='utf-8') as f:
         f.write(taskId + "\n")
         f.write(detectLabels + "\n")
         f.write(saveTime + "\n")
@@ -862,13 +883,13 @@ async def upload_version(
             "labelChecks": labelChecks,
         }
         action_file_path = os.path.join(model_dir, "action.json")
-        with open(action_file_path, "w") as action_file:
+        with open(action_file_path, "w",encoding='utf-8') as action_file:
             json.dump(action_data, action_file)
 
         # 4. 读取 last.json 文件并更新
         last_file_path = "../Models/last.json"
         try:
-            with open(last_file_path, "r") as last_file:
+            with open(last_file_path, "r",encoding='utf-8') as last_file:
                 last_data = json.load(last_file)
         except FileNotFoundError:
             last_data = {}
@@ -883,7 +904,7 @@ async def upload_version(
             last_data[username] = versionName
 
         # 更新 last.json 文件
-        with open(last_file_path, "w") as last_file:
+        with open(last_file_path, "w",encoding='utf-8') as last_file:
             json.dump(last_data, last_file)
 
         # 记录版本映射信息
@@ -986,13 +1007,13 @@ async def upload_version(
             "modelThreshold": threshold
         }
         action_file_path = os.path.join(model_dir, "action.json")
-        with open(action_file_path, "w") as action_file:
+        with open(action_file_path, "w",encoding='utf-8') as action_file:
             json.dump(action_data, action_file)
 
         # 4. 读取 last.json 文件并更新
         last_file_path = "../Models/last.json"
         try:
-            with open(last_file_path, "r") as last_file:
+            with open(last_file_path, "r",encoding='utf-8') as last_file:
                 last_data = json.load(last_file)
         except FileNotFoundError:
             last_data = {}
@@ -1003,7 +1024,7 @@ async def upload_version(
             last_data[username] = versionName
 
         # 更新 last.json 文件
-        with open(last_file_path, "w") as last_file:
+        with open(last_file_path, "w",encoding='utf-8') as last_file:
             json.dump(last_data, last_file)
 
         # 5. 记录 versionManagement 和 versionMapping 数据
@@ -1119,13 +1140,13 @@ async def upload_version(
 
         }
         action_file_path = os.path.join(model_dir, "action.json")
-        with open(action_file_path, "w") as action_file:
+        with open(action_file_path, "w",encoding='utf-8') as action_file:
             json.dump(action_data, action_file)
 
         # 4. 读取 last.json 文件并更新
         last_file_path = "../Models/last.json"
         try:
-            with open(last_file_path, "r") as last_file:
+            with open(last_file_path, "r",encoding='utf-8') as last_file:
                 last_data = json.load(last_file)
         except FileNotFoundError:
             last_data = {}
@@ -1136,7 +1157,7 @@ async def upload_version(
             last_data[username] = versionName
 
         # 更新 last.json 文件
-        with open(last_file_path, "w") as last_file:
+        with open(last_file_path, "w",encoding='utf-8') as last_file:
             json.dump(last_data, last_file)
 
         # 5. 记录 versionManagement 和 versionMapping 数据
@@ -1261,7 +1282,7 @@ def get_unique_owners_by_date(
         unique_owners = (
             db.query(distinct(PhotoUpload.ownerName))
             .filter(
-                PhotoUpload.ownerName != None,
+               #PhotoUpload.ownerName != None,
                 PhotoUpload.saveTime >= start_datetime,
                 PhotoUpload.saveTime <= end_datetime
             )
@@ -1276,8 +1297,8 @@ def get_unique_owners_by_date(
     except ValueError:
         raise HTTPException(
             status_code=400,
-            detail="Invalid date format. Please use YYYY-MM-DD format."
-        )
+            detail=f"Invalid data :{ve}"            
+          )
 
 
 @app.get("/api/work-status")
@@ -1334,3 +1355,9 @@ def download_result_photo(photo_id: int, db: Session = Depends(get_db)):
         media_type="image/png",
         filename=f"result_{os.path.basename(photo.file_path)}.png"
     )
+
+
+@app.post("/testupload")
+async def upload_file(file: UploadFile = File(...)):
+    content = await file.read()
+    return {"filename": file.filename, "size": len(content)}
